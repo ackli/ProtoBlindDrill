@@ -40,6 +40,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": true
+                },
+                {
+                    "name": "Shoot",
+                    "type": "Button",
+                    "id": "08b08c8c-2e97-4723-a020-fb74553f8fb3",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -172,6 +181,28 @@
                     "processors": "StickDeadzone",
                     "groups": "Gamepad",
                     "action": "Aim",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "63b3f0cd-ae2c-47aa-90f4-d349180b335d",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Shoot",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "a1d71e76-836a-4b01-9f3b-a5bfe3d52d02",
+                    "path": "<Gamepad>/leftTrigger",
+                    "interactions": "Press(pressPoint=0.3)",
+                    "processors": "",
+                    "groups": "Gamepad",
+                    "action": "Shoot",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

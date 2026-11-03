@@ -585,6 +585,7 @@ GameObject:
   - component: {fileID: 818788171}
   - component: {fileID: 818788170}
   - component: {fileID: 818788175}
+  - component: {fileID: 818788176}
   m_Layer: 9
   m_Name: Player
   m_TagString: Untagged
@@ -776,6 +777,28 @@ MonoBehaviour:
   tilemap: {fileID: 241513525}
   targetCamera: {fileID: 0}
   miningRange: 3
+  gamepadAimDistance: 2.5
+  gamepadDeadzone: 0.3
+  inputActions: {fileID: -944628639613478452, guid: 3766669ef6a043649f41e6fa06be588c, type: 3}
+--- !u!114 &818788176
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 818788169}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0f24f24c64a4570a039dd74286f57af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingController
+  projectilePrefab: {fileID: 1752449046452597294, guid: a61bd0e8d16fab64e8bb56ef65c29549, type: 3}
+  projectileSpeed: 18
+  muzzleOffset: 0.6
+  fireCooldown: 0.18
+  knockbackImpulse: 7
+  verticalKnockbackMultiplier: 1.1
+  targetCamera: {fileID: 0}
   gamepadAimDistance: 2.5
   gamepadDeadzone: 0.3
   inputActions: {fileID: -944628639613478452, guid: 3766669ef6a043649f41e6fa06be588c, type: 3}
