@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 241513524}
   - component: {fileID: 241513523}
   - component: {fileID: 241513522}
+  - component: {fileID: 241513526}
   m_Layer: 8
   m_Name: DestructibleTerrain
   m_TagString: Untagged
@@ -167,8 +168,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TerrainGenerator
   dirtTile: {fileID: 11400000, guid: ead341469cc79fe499ff76efe75f8b46, type: 2}
+  stoneTile: {fileID: 11400000, guid: c7a0af5579f44914e917705daba9881d, type: 2}
+  bedrockTile: {fileID: 11400000, guid: 6adcf16b970480541a7613ab264a8a7a, type: 2}
   bottomLeft: {x: -20, y: -20}
   topRight: {x: 20, y: -3}
+  stoneThreshold: 0.6
+  noiseScale: 0.15
+  noiseSeed: 0
   generateOnStart: 1
 --- !u!19719996 &241513523
 TilemapCollider2D:
@@ -302,6 +308,18 @@ Tilemap:
     e31: 0
     e32: 0
     e33: 1
+--- !u!114 &241513526
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 241513520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8aadeac7d9c7c41498d742c84ff1ffd3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DestructibleTerrain
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0

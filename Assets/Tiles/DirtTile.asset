@@ -9,9 +9,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 13312, guid: 0000000000000000e000000000000000, type: 0}
+  m_Script: {fileID: 11500000, guid: e7434bd4a04229f40b416352cacde272, type: 3}
   m_Name: DirtTile
-  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.Tilemaps.Tile
+  m_EditorClassIdentifier: Assembly-CSharp::DestructibleTile
   m_Sprite: {fileID: 21300000, guid: 4b8bcee6fef0c39419504d87b31b7f30, type: 3}
   m_Color: {r: 0.55, g: 0.35, b: 0.2, a: 1}
   m_Transform:
@@ -34,3 +34,7 @@ MonoBehaviour:
   m_InstancedGameObject: {fileID: 0}
   m_Flags: 1
   m_ColliderType: 1
+  material: 0
+  maxHP: 1
+  freshColor: {r: 0.55, g: 0.35, b: 0.2, a: 1}
+  damagedColor: {r: 0.35, g: 0.22, b: 0.12, a: 1}

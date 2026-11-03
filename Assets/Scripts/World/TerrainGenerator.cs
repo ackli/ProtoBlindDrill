@@ -4,15 +4,35 @@ using UnityEngine.Tilemaps;
 [RequireComponent(typeof(Tilemap))]
 public class TerrainGenerator : MonoBehaviour
 {
-    [Tooltip("Tile placée dans la zone définie par bottomLeft/topRight.")]
+    [Header("Tiles")]
+    [Tooltip("Tile par défaut (la plus commune, HP = 1 en principe).")]
     [SerializeField] private TileBase dirtTile;
 
+    [Tooltip("Tile plus résistante (optionnelle). Placée en patches via bruit de Perlin.")]
+    [SerializeField] private TileBase stoneTile;
+
+    [Tooltip("Tile incassable (optionnelle). Placée sur la rangée du bas.")]
+    [SerializeField] private TileBase bedrockTile;
+
+    [Header("Zone")]
     [Tooltip("Coin inférieur gauche (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-20, -20);
 
     [Tooltip("Coin supérieur droit (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int topRight = new Vector2Int(20, -3);
 
+    [Header("Noise")]
+    [Tooltip("Seuil du bruit de Perlin au-dessus duquel on place stoneTile. 1 = jamais, 0 = partout.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float stoneThreshold = 0.6f;
+
+    [Tooltip("Échelle du bruit de Perlin. Plus petit = patches plus larges.")]
+    [SerializeField] private float noiseScale = 0.15f;
+
+    [Tooltip("Décalage du bruit (change la seed).")]
+    [SerializeField] private int noiseSeed = 0;
+
+    [Header("Behavior")]
     [Tooltip("Générer automatiquement au Start. Décocher si tu peins la Tilemap à la main.")]
     [SerializeField] private bool generateOnStart = true;
 
@@ -56,12 +76,32 @@ public class TerrainGenerator : MonoBehaviour
             for (int x = bottomLeft.x; x <= topRight.x; x++)
             {
                 positions[i] = new Vector3Int(x, y, 0);
-                tiles[i] = dirtTile;
+                tiles[i] = PickTile(x, y);
                 i++;
             }
         }
 
         tilemap.SetTiles(positions, tiles);
+    }
+
+    /// <summary>
+    /// Choix de tile par cellule :
+    /// - rangée du fond → bedrockTile (si fournie)
+    /// - bruit de Perlin au-dessus de stoneThreshold → stoneTile (si fournie)
+    /// - sinon → dirtTile
+    /// </summary>
+    private TileBase PickTile(int x, int y)
+    {
+        if (bedrockTile != null && y == bottomLeft.y)
+            return bedrockTile;
+
+        if (stoneTile != null)
+        {
+            float n = Mathf.PerlinNoise((x + noiseSeed) * noiseScale, (y + noiseSeed) * noiseScale);
+            if (n > stoneThreshold) return stoneTile;
+        }
+
+        return dirtTile;
     }
 
     /// <summary>Vide toute la Tilemap (utile pour les tests).</summary>

@@ -31,10 +31,14 @@ public class MiningController : MonoBehaviour
     private Vector3Int currentTargetCell;
     private bool hasTarget;
     private bool targetInRange;
+    private DestructibleTerrain destructibleTerrain;
 
     private void Awake()
     {
         if (targetCamera == null) targetCamera = Camera.main;
+
+        // Récupère le gestionnaire d'HP s'il existe à côté de la Tilemap. Null-safe.
+        if (tilemap != null) destructibleTerrain = tilemap.GetComponent<DestructibleTerrain>();
 
         if (inputActions == null)
         {
@@ -118,7 +122,12 @@ public class MiningController : MonoBehaviour
         if (!hasTarget || !targetInRange || tilemap == null) return;
         if (!tilemap.HasTile(currentTargetCell)) return;
 
-        tilemap.SetTile(currentTargetCell, null);
+        // Si un DestructibleTerrain gère les HP, on passe par lui (dégâts incrémentaux).
+        // Sinon, fallback : destruction instantanée (compat ascendante).
+        if (destructibleTerrain != null)
+            destructibleTerrain.TryMine(currentTargetCell);
+        else
+            tilemap.SetTile(currentTargetCell, null);
     }
 
     private void OnDrawGizmos()
