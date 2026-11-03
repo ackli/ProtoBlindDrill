@@ -19,6 +19,10 @@
 # Recordings can get excessive in size
 /[Rr]ecordings/
 
+# MCP / dev-time screenshots (ignorés — refaits à la demande)
+/[Aa]ssets/[Ss]creenshots/
+/[Aa]ssets/[Ss]creenshots.meta
+
 # Uncomment this line if you wish to ignore the asset store tools plugin
 # /[Aa]ssets/AssetStoreTools*
 
