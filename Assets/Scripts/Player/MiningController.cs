@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Tilemaps;
@@ -44,6 +45,10 @@ public class MiningController : MonoBehaviour
     private Vector3Int currentTargetCell;
     private bool hasTarget;
     private DestructibleTerrain destructibleTerrain;
+
+    // Buffers du BFS 4-connectivité pour éviter d'allouer chaque frame.
+    private readonly HashSet<Vector3Int> bfsVisited = new HashSet<Vector3Int>();
+    private readonly Queue<Vector3Int> bfsQueue = new Queue<Vector3Int>();
 
     private void Awake()
     {
@@ -105,9 +110,13 @@ public class MiningController : MonoBehaviour
     }
 
     /// <summary>
-    /// Détermine la cellule visée par un Raycast2D depuis le joueur vers le curseur / stick :
-    /// la cible est TOUJOURS la première tuile du Layer Ground sur le trajet, dans la limite
-    /// de miningRange. Ça garantit la ligne de vue (pas de minage à travers un mur).
+    /// Deux étapes :
+    ///  1) Raycast depuis le joueur vers le curseur pour trouver la *tentative* de cible
+    ///     (première tuile Ground touchée dans miningRange).
+    ///  2) Vérification BFS 4-connectivité : la cible n'est acceptée que si on peut
+    ///     l'atteindre depuis la cellule du joueur par un chemin de cellules vides
+    ///     en N/S/E/O, dans la portée. Ça filtre les tirs qui "glissent" dans un angle
+    ///     diagonal entre deux tuiles pleines collées.
     /// </summary>
     private void UpdateTargetCell()
     {
@@ -135,19 +144,79 @@ public class MiningController : MonoBehaviour
 
         Vector2 direction = toCursor.normalized;
         RaycastHit2D hit = Physics2D.Raycast(origin, direction, miningRange, wallLayerMask);
+        if (hit.collider == null) { hasTarget = false; return; }
 
-        if (hit.collider == null)
+        Vector3 pointInside = (Vector3)(hit.point + direction * 0.01f);
+        Vector3Int candidate = tilemap.WorldToCell(pointInside);
+        if (!tilemap.HasTile(candidate)) { hasTarget = false; return; }
+
+        if (!IsCellOrthogonallyReachable(candidate))
         {
-            // Rien dans la portée OU rien entre le joueur et le curseur → pas de cible.
             hasTarget = false;
             return;
         }
 
-        // Entrer légèrement dans la tuile touchée pour que WorldToCell retourne LA tuile
-        // (sinon on tombe sur sa frontière et selon le signe on prend la mauvaise cellule).
-        Vector3 pointInside = (Vector3)(hit.point + direction * 0.01f);
-        currentTargetCell = tilemap.WorldToCell(pointInside);
-        hasTarget = tilemap.HasTile(currentTargetCell);
+        currentTargetCell = candidate;
+        hasTarget = true;
+    }
+
+    /// <summary>
+    /// BFS 4-connectivité à travers les cellules vides depuis la cellule du joueur.
+    /// Retourne true si <paramref name="target"/> est une voisine orthogonale (N/S/E/O)
+    /// de l'une de ces cellules vides, dans la limite de miningRange.
+    /// Empêche les shots en diagonale à travers un angle de deux tuiles collées.
+    /// </summary>
+    private bool IsCellOrthogonallyReachable(Vector3Int target)
+    {
+        bfsVisited.Clear();
+        bfsQueue.Clear();
+
+        Vector3Int start = tilemap.WorldToCell(transform.position);
+        if (start == target) return false;
+
+        bfsVisited.Add(start);
+        bfsQueue.Enqueue(start);
+
+        Vector3 playerPos = transform.position;
+        float rangeSq = miningRange * miningRange;
+        // Garde-fou : la portée en cellules + 1 au carré, ×4 pour couvrir le fan-out du BFS.
+        int maxVisits = Mathf.CeilToInt(miningRange + 1) * Mathf.CeilToInt(miningRange + 1) * 4;
+        int visits = 0;
+
+        Vector3Int[] dirs =
+        {
+            new Vector3Int( 1, 0, 0),
+            new Vector3Int(-1, 0, 0),
+            new Vector3Int( 0, 1, 0),
+            new Vector3Int( 0,-1, 0),
+        };
+
+        while (bfsQueue.Count > 0 && visits++ < maxVisits)
+        {
+            Vector3Int cell = bfsQueue.Dequeue();
+
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                Vector3Int next = cell + dirs[i];
+                if (bfsVisited.Contains(next)) continue;
+
+                // Clamp dans la portée (distance centre joueur → centre cellule).
+                Vector3 centerNext = tilemap.GetCellCenterWorld(next);
+                float dx = centerNext.x - playerPos.x;
+                float dy = centerNext.y - playerPos.y;
+                if (dx * dx + dy * dy > rangeSq) continue;
+
+                bfsVisited.Add(next);
+
+                if (next == target) return true;
+
+                // On ne traverse QUE les cellules vides. Une cellule pleine est un
+                // candidat de cible, mais n'est pas poursuivie plus loin par le BFS.
+                if (!tilemap.HasTile(next)) bfsQueue.Enqueue(next);
+            }
+        }
+
+        return false;
     }
 
     private void UpdateHoverCursor()
