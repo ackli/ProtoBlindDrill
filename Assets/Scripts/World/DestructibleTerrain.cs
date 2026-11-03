@@ -11,6 +11,14 @@ public class DestructibleTerrain : MonoBehaviour
 {
     public enum MineResult { NoTile, NonDestructible, Indestructible, Damaged, Destroyed }
 
+    [Header("Loot")]
+    [Tooltip("Prefab LightOrb spawnable à la destruction d'une tuile de terre (Dirt).")]
+    [SerializeField] private LightOrb lightOrbPrefab;
+
+    [Range(0f, 1f)]
+    [Tooltip("Probabilité de spawner un LightOrb sur destruction d'un Dirt.")]
+    [SerializeField] private float orbSpawnChance = 0.15f;
+
     private Tilemap tilemap;
     private readonly Dictionary<Vector3Int, int> cellHP = new Dictionary<Vector3Int, int>();
 
@@ -40,6 +48,7 @@ public class DestructibleTerrain : MonoBehaviour
         {
             tilemap.SetTile(cell, null);
             cellHP.Remove(cell);
+            TrySpawnOrb(cell, destructible);
             return MineResult.Destroyed;
         }
 
@@ -52,4 +61,14 @@ public class DestructibleTerrain : MonoBehaviour
 
     /// <summary>Remet à zéro les dégâts mémorisés (utile si tu régénères le terrain).</summary>
     public void ClearDamageState() => cellHP.Clear();
+
+    private void TrySpawnOrb(Vector3Int cell, DestructibleTile tile)
+    {
+        if (lightOrbPrefab == null) return;
+        if (tile.material != DestructibleTile.MaterialType.Dirt) return; // seulement sur dirt
+        if (Random.value > orbSpawnChance) return;
+
+        Vector3 pos = tilemap.GetCellCenterWorld(cell);
+        Instantiate(lightOrbPrefab, pos, Quaternion.identity);
+    }
 }

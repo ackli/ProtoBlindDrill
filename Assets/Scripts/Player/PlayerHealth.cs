@@ -12,6 +12,10 @@ public class PlayerHealth : MonoBehaviour
     [Header("Health")]
     [SerializeField] private int maxHealth = 3;
 
+    [Header("Drain")]
+    [Tooltip("Perte passive de santé par seconde (float). 0 = désactivé. Avec maxHealth=3 et drain=0.2, le joueur perd 1 HP toutes les 5 s.")]
+    [SerializeField] private float drainPerSecond = 0.2f;
+
     [Header("Respawn")]
     [Tooltip("Au Awake, utiliser la position courante comme spawn point.")]
     [SerializeField] private bool setSpawnOnStart = true;
@@ -29,12 +33,25 @@ public class PlayerHealth : MonoBehaviour
 
     private Rigidbody2D rb;
     private Vector3 spawnPoint;
+    private float drainAccumulator;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         spawnPoint = setSpawnOnStart ? transform.position : manualSpawnPoint;
         CurrentHealth = maxHealth;
+        drainAccumulator = 0f;
+    }
+
+    private void Update()
+    {
+        if (!IsAlive || drainPerSecond <= 0f) return;
+        drainAccumulator += drainPerSecond * Time.deltaTime;
+        while (drainAccumulator >= 1f)
+        {
+            drainAccumulator -= 1f;
+            TakeDamage(1);
+        }
     }
 
     public void TakeDamage(int amount)
@@ -59,12 +76,13 @@ public class PlayerHealth : MonoBehaviour
         Respawn();
     }
 
-    /// <summary>Replace le joueur au spawn point et reset HP + vélocité.</summary>
+    /// <summary>Replace le joueur au spawn point et reset HP + vélocité + drain.</summary>
     public void Respawn()
     {
         transform.position = spawnPoint;
         if (rb != null) rb.linearVelocity = Vector2.zero;
         CurrentHealth = maxHealth;
+        drainAccumulator = 0f;
         OnHealthChanged?.Invoke(CurrentHealth, maxHealth);
         OnRespawn?.Invoke();
     }
