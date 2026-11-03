@@ -29,8 +29,8 @@ public class MiningController : MonoBehaviour
     [Tooltip("Cadre affiché sur la tuile ciblée. Si null, créé automatiquement au Awake.")]
     [SerializeField] private LineRenderer hoverCursor;
 
-    [Tooltip("Couleur du cadre (noir par défaut).")]
-    [SerializeField] private Color hoverColor = Color.black;
+    [Tooltip("Couleur du cadre (vert vif par défaut).")]
+    [SerializeField] private Color hoverColor = new Color(0.2f, 1f, 0.3f, 1f);
 
     [Tooltip("Épaisseur du trait du cadre.")]
     [SerializeField] private float hoverWidth = 0.08f;
