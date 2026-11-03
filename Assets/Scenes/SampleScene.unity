@@ -170,7 +170,7 @@ MonoBehaviour:
   dirtTile: {fileID: 11400000, guid: ead341469cc79fe499ff76efe75f8b46, type: 2}
   stoneTile: {fileID: 11400000, guid: c7a0af5579f44914e917705daba9881d, type: 2}
   bedrockTile: {fileID: 11400000, guid: 6adcf16b970480541a7613ab264a8a7a, type: 2}
-  bottomLeft: {x: -20, y: -20}
+  bottomLeft: {x: -20, y: -62}
   topRight: {x: 20, y: -3}
   stoneThreshold: 0.6
   noiseScale: 0.15
@@ -795,8 +795,14 @@ MonoBehaviour:
   tilemap: {fileID: 241513525}
   targetCamera: {fileID: 0}
   miningRange: 3
+  wallLayerMask:
+    serializedVersion: 2
+    m_Bits: 256
   gamepadAimDistance: 2.5
   gamepadDeadzone: 0.3
+  hoverCursor: {fileID: 0}
+  hoverColor: {r: 0, g: 0, b: 0, a: 1}
+  hoverWidth: 0.08
   inputActions: {fileID: -944628639613478452, guid: 3766669ef6a043649f41e6fa06be588c, type: 3}
 --- !u!114 &818788176
 MonoBehaviour:

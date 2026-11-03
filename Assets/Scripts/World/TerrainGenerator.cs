@@ -16,7 +16,7 @@ public class TerrainGenerator : MonoBehaviour
 
     [Header("Zone")]
     [Tooltip("Coin inférieur gauche (cellules) de la zone à remplir, inclus.")]
-    [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-20, -20);
+    [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-20, -62);
 
     [Tooltip("Coin supérieur droit (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int topRight = new Vector2Int(20, -3);
@@ -59,6 +59,9 @@ public class TerrainGenerator : MonoBehaviour
             return;
         }
 
+        // On repart d'une Tilemap propre pour éviter les restes d'une génération précédente.
+        tilemap.ClearAllTiles();
+
         int w = topRight.x - bottomLeft.x + 1;
         int h = topRight.y - bottomLeft.y + 1;
         if (w <= 0 || h <= 0)
@@ -86,13 +89,13 @@ public class TerrainGenerator : MonoBehaviour
 
     /// <summary>
     /// Choix de tile par cellule :
-    /// - rangée du fond → bedrockTile (si fournie)
+    /// - bords (rangée du bas + colonnes gauche/droite) → bedrockTile (si fournie)
     /// - bruit de Perlin au-dessus de stoneThreshold → stoneTile (si fournie)
     /// - sinon → dirtTile
     /// </summary>
     private TileBase PickTile(int x, int y)
     {
-        if (bedrockTile != null && y == bottomLeft.y)
+        if (bedrockTile != null && (y == bottomLeft.y || x == bottomLeft.x || x == topRight.x))
             return bedrockTile;
 
         if (stoneTile != null)
