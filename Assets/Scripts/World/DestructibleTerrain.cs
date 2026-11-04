@@ -24,8 +24,8 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Prefab de Blocker 3D optionnel. Laisse vide pour générer dynamiquement un GameObject avec BoxCollider + NavMeshObstacle (Carve).")]
     [SerializeField] private GameObject blockerPrefab;
 
-    [Tooltip("Profondeur Z où les Blockers 3D sont placés. Doit être aligné avec NavMeshPlane3D.")]
-    [SerializeField] private float blockerZ = 5f;
+    [Tooltip("Plan Y monde 3D où est posé le NavMesh horizontal (projection XZ). Le Y 2D devient Z 3D.")]
+    [SerializeField] private float navMeshY = 100f;
 
     [Tooltip("Parent des Blockers 3D. Auto-créé (enfant 'Blockers') si vide.")]
     [SerializeField] private Transform blockersParent;
@@ -85,8 +85,9 @@ public class DestructibleTerrain : MonoBehaviour
 
         EnsureBlockersParent();
 
-        Vector3 pos = tilemap.GetCellCenterWorld(cell);
-        pos.z = blockerZ;
+        Vector3 cellCenter = tilemap.GetCellCenterWorld(cell);
+        // Projection dual-plane : (x_2D, y_2D, 0) → (x, navMeshY, y) en 3D.
+        Vector3 pos = new Vector3(cellCenter.x, navMeshY, cellCenter.y);
 
         GameObject go;
         if (blockerPrefab != null)
@@ -99,14 +100,12 @@ public class DestructibleTerrain : MonoBehaviour
             go.transform.SetParent(blockersParent, worldPositionStays: false);
             go.transform.position = pos;
 
-            var col = go.AddComponent<BoxCollider>();
-            col.size = Vector3.one;
-
+            // Pas de BoxCollider : le NavMeshObstacle Carve suffit et évite de polluer le bake.
             var obs = go.AddComponent<NavMeshObstacle>();
             obs.shape = NavMeshObstacleShape.Box;
-            obs.size = Vector3.one;
+            obs.size = new Vector3(1f, 4f, 1f); // épaisseur Y pour transpercer le plan NavMesh horizontal
             obs.carving = true;
-            obs.carveOnlyStationary = true;
+            obs.carveOnlyStationary = false; // runtime-instancié : force le carving sans attente de validation d'immobilité
         }
 
         blockers[cell] = go;
@@ -150,12 +149,22 @@ public class DestructibleTerrain : MonoBehaviour
 
     private void EnsureBlockersParent()
     {
-        if (blockersParent != null) return;
-        var existing = transform.Find("Blockers");
-        if (existing != null) { blockersParent = existing; return; }
-        var go = new GameObject("Blockers");
-        go.transform.SetParent(transform, worldPositionStays: false);
-        blockersParent = go.transform;
+        if (blockersParent == null)
+        {
+            var existing = transform.Find("Blockers");
+            if (existing != null) blockersParent = existing;
+            else
+            {
+                var go = new GameObject("Blockers");
+                go.transform.SetParent(transform, worldPositionStays: false);
+                blockersParent = go.transform;
+            }
+        }
+
+        // Garantit que 'Blockers' est à world Z = 0 : localPosition.z = 5 → world Z = 5 (aligné sur NavMeshPlane3D).
+        var wp = blockersParent.position;
+        if (!Mathf.Approximately(wp.z, 0f))
+            blockersParent.position = new Vector3(wp.x, wp.y, 0f);
     }
 
     private void TrySpawnOrb(Vector3Int cell, DestructibleTile tile)
