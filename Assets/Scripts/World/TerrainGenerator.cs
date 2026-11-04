@@ -11,7 +11,7 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Tile plus résistante (optionnelle). Placée en patches via bruit de Perlin.")]
     [SerializeField] private TileBase stoneTile;
 
-    [Tooltip("Tile incassable (optionnelle). Placée sur la rangée du bas.")]
+    [Tooltip("Tile incassable (optionnelle). Placée sur la rangée du bas et les colonnes gauche/droite.")]
     [SerializeField] private TileBase bedrockTile;
 
     [Header("Zone")]
@@ -21,16 +21,34 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Coin supérieur droit (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int topRight = new Vector2Int(20, -3);
 
-    [Header("Noise")]
+    [Header("Stone Noise")]
     [Tooltip("Seuil du bruit de Perlin au-dessus duquel on place stoneTile. 1 = jamais, 0 = partout.")]
     [Range(0f, 1f)]
     [SerializeField] private float stoneThreshold = 0.6f;
 
-    [Tooltip("Échelle du bruit de Perlin. Plus petit = patches plus larges.")]
+    [Tooltip("Échelle du bruit de Perlin (pierre). Plus petit = patches plus larges.")]
     [SerializeField] private float noiseScale = 0.15f;
 
-    [Tooltip("Décalage du bruit (change la seed).")]
+    [Tooltip("Décalage du bruit (change la seed) pour la pierre.")]
     [SerializeField] private int noiseSeed = 0;
+
+    [Header("Cavity Noise (poches d'air)")]
+    [Tooltip("Seuil du second bruit de Perlin au-dessus duquel la cellule devient vide. 1 = jamais, 0 = partout.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float cavityThreshold = 0.58f;
+
+    [Tooltip("Échelle du bruit des cavités. Plus petit = poches plus larges et plus connectées.")]
+    [SerializeField] private float cavityScale = 0.12f;
+
+    [Tooltip("Seed indépendante du bruit des cavités.")]
+    [SerializeField] private int cavitySeed = 1337;
+
+    [Header("Safe Spawn")]
+    [Tooltip("Largeur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur.")]
+    [SerializeField] private int safeSpawnWidth = 7;
+
+    [Tooltip("Hauteur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur.")]
+    [SerializeField] private int safeSpawnHeight = 5;
 
     [Header("Behavior")]
     [Tooltip("Générer automatiquement au Start. Décocher si tu peins la Tilemap à la main.")]
@@ -49,7 +67,8 @@ public class TerrainGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Remplit la zone rectangulaire [bottomLeft, topRight] avec dirtTile en un seul SetTiles batch.
+    /// Remplit la zone rectangulaire [bottomLeft, topRight] en un seul SetTiles batch.
+    /// Sculpte des poches d'air via un second bruit de Perlin, tout en préservant la bordure Bedrock et la zone de spawn.
     /// </summary>
     public void Generate()
     {
@@ -88,23 +107,54 @@ public class TerrainGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Choix de tile par cellule :
-    /// - bords (rangée du bas + colonnes gauche/droite) → bedrockTile (si fournie)
-    /// - bruit de Perlin au-dessus de stoneThreshold → stoneTile (si fournie)
-    /// - sinon → dirtTile
+    /// Choix de tile par cellule (ordre de priorité strict) :
+    /// 1. Bordure (bas + colonnes gauche/droite) → bedrockTile, intacte, jamais vide.
+    /// 2. Zone de spawn haut-centre → null (vide), pour que le joueur ne spawn pas dans un mur.
+    /// 3. Bruit de Perlin des cavités au-dessus de cavityThreshold → null (poche d'air).
+    /// 4. Bruit de Perlin de la pierre au-dessus de stoneThreshold → stoneTile.
+    /// 5. Sinon → dirtTile.
     /// </summary>
     private TileBase PickTile(int x, int y)
     {
+        // 1. Bordure Bedrock : prioritaire absolue, aucune cavité ne la touche.
         if (bedrockTile != null && (y == bottomLeft.y || x == bottomLeft.x || x == topRight.x))
             return bedrockTile;
 
+        // 2. Zone de spawn au haut-centre : toujours vide.
+        if (IsInSafeSpawn(x, y))
+            return null;
+
+        // 3. Cavités via second bruit de Perlin.
+        float cavity = Mathf.PerlinNoise((x + cavitySeed) * cavityScale, (y + cavitySeed) * cavityScale);
+        if (cavity > cavityThreshold)
+            return null;
+
+        // 4. Pierre (comportement d'origine, inchangé).
         if (stoneTile != null)
         {
             float n = Mathf.PerlinNoise((x + noiseSeed) * noiseScale, (y + noiseSeed) * noiseScale);
             if (n > stoneThreshold) return stoneTile;
         }
 
+        // 5. Dirt par défaut (le LightOrb-spawn-chance côté DestructibleTerrain reste inchangé).
         return dirtTile;
+    }
+
+    /// <summary>
+    /// Vrai si (x, y) est dans la bande vide garantie en haut-centre pour le spawn du joueur.
+    /// </summary>
+    private bool IsInSafeSpawn(int x, int y)
+    {
+        if (safeSpawnWidth <= 0 || safeSpawnHeight <= 0) return false;
+
+        int centerX = (bottomLeft.x + topRight.x) / 2;
+        int halfW = safeSpawnWidth / 2;
+        int minX = centerX - halfW;
+        int maxX = centerX + (safeSpawnWidth - halfW - 1);
+        int minY = topRight.y - safeSpawnHeight + 1;
+        int maxY = topRight.y;
+
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
     }
 
     /// <summary>Vide toute la Tilemap (utile pour les tests).</summary>
