@@ -104,6 +104,25 @@ public class TerrainGenerator : MonoBehaviour
         }
 
         tilemap.SetTiles(positions, tiles);
+
+        SyncBlockers(positions, tiles);
+    }
+
+    /// <summary>
+    /// Synchronise les Blockers 3D (NavMeshObstacle Carve) avec les tuiles pleines.
+    /// Sans DestructibleTerrain sur le même GO, c'est un no-op.
+    /// </summary>
+    private void SyncBlockers(Vector3Int[] positions, TileBase[] tiles)
+    {
+        var destructible = GetComponent<DestructibleTerrain>();
+        if (destructible == null) return;
+
+        destructible.ClearBlockers();
+        for (int k = 0; k < positions.Length; k++)
+        {
+            if (tiles[k] != null)
+                destructible.SpawnBlocker(positions[k]);
+        }
     }
 
     /// <summary>
