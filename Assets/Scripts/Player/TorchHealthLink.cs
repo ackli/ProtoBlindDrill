@@ -50,6 +50,12 @@ public class TorchHealthLink : MonoBehaviour
     private void UpdateTargetRadius()
     {
         if (stats == null) return;
+        // Si le joueur est mort, on coupe la torche entièrement (radius 0) au lieu de rester à minOuterRadius.
+        if (stats.CurrentHealth <= 0)
+        {
+            targetRadius = 0f;
+            return;
+        }
         float t = stats.MaxHealth > 0 ? (float)stats.CurrentHealth / stats.MaxHealth : 0f;
         targetRadius = Mathf.Lerp(minOuterRadius, maxOuterRadius, t);
     }
@@ -59,5 +65,6 @@ public class TorchHealthLink : MonoBehaviour
         if (torch == null) return;
         torch.pointLightOuterRadius = Mathf.MoveTowards(
             torch.pointLightOuterRadius, targetRadius, transitionSpeed * Time.deltaTime);
+        if (torch.pointLightOuterRadius <= 0.01f) torch.pointLightOuterRadius = 0f; // snap au ras du zéro
     }
 }

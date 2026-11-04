@@ -4,17 +4,21 @@ using UnityEngine;
 
 /// <summary>
 /// Gestionnaire de vie du joueur avec mécanique roguelite d'Excédent de Lumière.
-/// - CurrentHealth : santé classique capée à MaxHealth.
-/// - LightOverheal : "bouclier" de lumière capé à maxOverheal, drainé passivement.
+/// - CurrentHealth : santé classique capée à MaxHealth. Draine passivement via healthDrainPerSecond
+///   (mécanique "la torche consume la vie" — bypass volontaire du LightOverheal).
+/// - LightOverheal : "bouclier" de lumière capé à maxOverheal. Draine séparément via
+///   overhealDrainInterval, ne touche JAMAIS CurrentHealth.
 ///
 /// Flux Heal : remplit d'abord CurrentHealth, le reliquat charge LightOverheal (capé).
-/// Flux TakeDamage : absorbe d'abord via LightOverheal, le reliquat ampute CurrentHealth.
-/// La dégénérescence ne touche JAMAIS CurrentHealth.
+/// Flux TakeDamage (externe) : absorbe d'abord via LightOverheal, le reliquat ampute CurrentHealth.
 /// </summary>
 public class PlayerStats : MonoBehaviour
 {
     [Header("Health")]
     [SerializeField] private int maxHealth = 5;
+
+    [Tooltip("Perte passive de CurrentHealth par seconde (ancienne mécanique du drain de torche). 0 = désactivé. 0.2 = 1 HP toutes les 5 s. Ne passe PAS par l'overheal, par design.")]
+    [SerializeField] private float healthDrainPerSecond = 0.2f;
 
     [Header("Light Overheal")]
     [Tooltip("Plafond de l'excédent de lumière (bouclier dégénératif).")]
@@ -22,6 +26,13 @@ public class PlayerStats : MonoBehaviour
 
     [Tooltip("Intervalle (s) entre deux pertes passives de 1 point de LightOverheal.")]
     [SerializeField] private float overhealDrainInterval = 10f;
+
+    [Header("Respawn")]
+    [Tooltip("Au Awake, capture la position courante comme spawn point.")]
+    [SerializeField] private bool setSpawnOnStart = true;
+
+    [Tooltip("Spawn point manuel (utilisé si setSpawnOnStart = false).")]
+    [SerializeField] private Vector3 manualSpawnPoint;
 
     public int MaxHealth => maxHealth;
     public int CurrentHealth { get; private set; }
@@ -32,26 +43,56 @@ public class PlayerStats : MonoBehaviour
     /// <summary>Levé après toute variation (Heal, TakeDamage, drain passif). Pour l'UI.</summary>
     public event Action OnStatsChanged;
 
-    private Coroutine drainCoroutine;
+    /// <summary>Levé juste avant le reset de position / stats dans Respawn().</summary>
+    public event Action OnDeath;
+
+    /// <summary>Levé juste après le reset complet dans Respawn().</summary>
+    public event Action OnRespawn;
+
+    private Rigidbody2D rb;
+    private Vector3 spawnPoint;
+    private Coroutine overhealDrainCoroutine;
+    private float healthDrainAccumulator;
+    private bool deathFired;
 
     private void Awake()
     {
+        rb = GetComponent<Rigidbody2D>();
+        spawnPoint = setSpawnOnStart ? transform.position : manualSpawnPoint;
         CurrentHealth = maxHealth;
         LightOverheal = 0;
+        healthDrainAccumulator = 0f;
+        deathFired = false;
     }
 
     private void OnEnable()
     {
         if (overhealDrainInterval > 0f)
-            drainCoroutine = StartCoroutine(OverhealDrainLoop());
+            overhealDrainCoroutine = StartCoroutine(OverhealDrainLoop());
     }
 
     private void OnDisable()
     {
-        if (drainCoroutine != null)
+        if (overhealDrainCoroutine != null)
         {
-            StopCoroutine(drainCoroutine);
-            drainCoroutine = null;
+            StopCoroutine(overhealDrainCoroutine);
+            overhealDrainCoroutine = null;
+        }
+    }
+
+    private void Update()
+    {
+        // Drain passif de CurrentHealth (bypass du bouclier d'overheal : c'est la "torche qui s'éteint").
+        if (!IsAlive) return;
+        if (healthDrainPerSecond <= 0f) return;
+
+        healthDrainAccumulator += healthDrainPerSecond * Time.deltaTime;
+        while (healthDrainAccumulator >= 1f && IsAlive)
+        {
+            healthDrainAccumulator -= 1f;
+            CurrentHealth = Mathf.Max(0, CurrentHealth - 1);
+            OnStatsChanged?.Invoke();
+            if (CurrentHealth <= 0) Die();
         }
     }
 
@@ -101,6 +142,28 @@ public class PlayerStats : MonoBehaviour
 
     private void Die()
     {
+        if (deathFired) return;    // garde contre doubles appels (Update + TakeDamage dans la même frame)
+        deathFired = true;
+        OnStatsChanged?.Invoke();
+        OnDeath?.Invoke();
         Debug.Log("Game Over");
+        Respawn();
     }
+
+    /// <summary>Téléporte au spawn point et reset complet stats + accumulators + vélocité.</summary>
+    public void Respawn()
+    {
+        transform.position = spawnPoint;
+        if (rb != null) rb.linearVelocity = Vector2.zero;
+
+        CurrentHealth = maxHealth;
+        LightOverheal = 0;
+        healthDrainAccumulator = 0f;
+        deathFired = false;
+
+        OnStatsChanged?.Invoke();
+        OnRespawn?.Invoke();
+    }
+
+    public void SetSpawnPoint(Vector3 worldPos) => spawnPoint = worldPos;
 }
