@@ -60,8 +60,8 @@ public class LavaHazard : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        var hp = other.GetComponent<PlayerHealth>();
-        if (hp == null) hp = other.GetComponentInParent<PlayerHealth>();
+        var hp = other.GetComponent<PlayerStats>();
+        if (hp == null) hp = other.GetComponentInParent<PlayerStats>();
         if (hp == null) return;
 
         hp.TakeDamage(damageOnContact);

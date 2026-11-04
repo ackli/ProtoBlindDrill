@@ -4,9 +4,9 @@ using UnityEngine.Rendering.Universal;
 /// <summary>
 /// Lie le rayon extérieur de la torche (Light2D Point) au ratio de santé du joueur.
 /// Transition douce via MoveTowards, snap au premier Awake pour partir sur une
-/// bonne valeur.
+/// bonne valeur. Ignore le LightOverheal — c'est bien la santé classique qui pilote la vision.
 /// </summary>
-[RequireComponent(typeof(PlayerHealth))]
+[RequireComponent(typeof(PlayerStats))]
 public class TorchHealthLink : MonoBehaviour
 {
     [Header("Torch")]
@@ -22,34 +22,35 @@ public class TorchHealthLink : MonoBehaviour
     [Tooltip("Vitesse de transition du rayon (unités/s).")]
     [SerializeField] private float transitionSpeed = 4f;
 
-    private PlayerHealth health;
+    private PlayerStats stats;
     private float targetRadius;
 
     private void Awake()
     {
-        health = GetComponent<PlayerHealth>();
+        stats = GetComponent<PlayerStats>();
     }
 
     private void OnEnable()
     {
-        if (health != null)
+        if (stats != null)
         {
-            health.OnHealthChanged += OnHealthChanged;
-            UpdateTargetRadius(health.CurrentHealth, health.MaxHealth);
+            stats.OnStatsChanged += OnStatsChanged;
+            UpdateTargetRadius();
         }
         if (torch != null) torch.pointLightOuterRadius = targetRadius;
     }
 
     private void OnDisable()
     {
-        if (health != null) health.OnHealthChanged -= OnHealthChanged;
+        if (stats != null) stats.OnStatsChanged -= OnStatsChanged;
     }
 
-    private void OnHealthChanged(int current, int max) => UpdateTargetRadius(current, max);
+    private void OnStatsChanged() => UpdateTargetRadius();
 
-    private void UpdateTargetRadius(int current, int max)
+    private void UpdateTargetRadius()
     {
-        float t = max > 0 ? (float)current / max : 0f;
+        if (stats == null) return;
+        float t = stats.MaxHealth > 0 ? (float)stats.CurrentHealth / stats.MaxHealth : 0f;
         targetRadius = Mathf.Lerp(minOuterRadius, maxOuterRadius, t);
     }
 

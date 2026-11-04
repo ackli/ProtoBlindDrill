@@ -28,7 +28,7 @@ public class MobController : MonoBehaviour
     [SerializeField] private float sampleRadius = 2f;
 
     [Header("Player")]
-    [Tooltip("Si vide, résolu au Awake via FindObjectOfType<PlayerHealth>().")]
+    [Tooltip("Si vide, résolu au Awake via FindObjectOfType<PlayerStats>().")]
     [SerializeField] private Transform playerTarget;
 
     [Header("Visuals")]
@@ -54,7 +54,7 @@ public class MobController : MonoBehaviour
 
         if (playerTarget == null)
         {
-            var ph = FindObjectOfType<PlayerHealth>();
+            var ph = FindObjectOfType<PlayerStats>();
             if (ph != null) playerTarget = ph.transform;
         }
 
@@ -162,8 +162,8 @@ public class MobController : MonoBehaviour
     /// <summary>Hook appelé par CollisionRelay depuis l'enfant Visuals (détaché au Start).</summary>
     public void OnChildTriggerEnter(Collider2D other)
     {
-        var ph = other.GetComponent<PlayerHealth>();
-        if (ph == null) ph = other.GetComponentInParent<PlayerHealth>();
+        var ph = other.GetComponent<PlayerStats>();
+        if (ph == null) ph = other.GetComponentInParent<PlayerStats>();
         if (ph != null)
         {
             ph.TakeDamage(damageToPlayer);

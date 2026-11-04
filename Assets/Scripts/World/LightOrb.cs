@@ -32,11 +32,11 @@ public class LightOrb : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        var hp = other.GetComponent<PlayerHealth>();
-        if (hp == null) hp = other.GetComponentInParent<PlayerHealth>();
+        var hp = other.GetComponent<PlayerStats>();
+        if (hp == null) hp = other.GetComponentInParent<PlayerStats>();
         if (hp == null) return;
 
-        hp.Heal(healAmount);
+        hp.Heal(healAmount);;
         if (ScoreManager.Instance != null) ScoreManager.Instance.AddLight(scoreValue);
         Destroy(gameObject);
     }
