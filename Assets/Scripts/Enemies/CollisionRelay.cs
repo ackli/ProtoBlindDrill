@@ -7,12 +7,12 @@ using UnityEngine;
 [RequireComponent(typeof(Collider2D))]
 public class CollisionRelay : MonoBehaviour
 {
-    [Tooltip("Cible du relais. Si vide, résolu via GetComponentInParent<MobController>() au Awake.")]
-    [SerializeField] private MobController target;
+    [Tooltip("Cible du relais. Si vide, résolu via GetComponentInParent<MobBase>() au Awake.")]
+    [SerializeField] private MobBase target;
 
     private void Awake()
     {
-        if (target == null) target = GetComponentInParent<MobController>();
+        if (target == null) target = GetComponentInParent<MobBase>();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
