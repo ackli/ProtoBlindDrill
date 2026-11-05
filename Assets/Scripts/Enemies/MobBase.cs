@@ -175,7 +175,8 @@ public abstract class MobBase : MonoBehaviour
         if (proj == null) proj = other.GetComponentInParent<DebrisProjectile>();
         if (proj != null)
         {
-            TakeDamage(1, proj.gameObject.name);
+            int dmg = DebugCheatController.OneShotKillEnabled ? 9999 : 1;
+            TakeDamage(dmg, proj.gameObject.name);
             Destroy(proj.gameObject);
         }
     }

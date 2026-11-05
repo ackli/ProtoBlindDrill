@@ -44,6 +44,9 @@ public class PlayerStats : MonoBehaviour
     public int MaxOverheal => maxOverheal;
     public bool IsAlive => CurrentHealth > 0;
 
+    /// <summary>Hook de triche : quand true, court-circuite TakeDamage et le drain passif. Piloté par DebugCheatController.</summary>
+    public bool GodMode { get; set; }
+
     /// <summary>Levé après toute variation (Heal, TakeDamage, drain passif). Pour l'UI.</summary>
     public event Action OnStatsChanged;
 
@@ -96,6 +99,7 @@ public class PlayerStats : MonoBehaviour
 
         // Drain passif de CurrentHealth (bypass du bouclier d'overheal : c'est la "torche qui s'éteint").
         if (!IsAlive) return;
+        if (GodMode) return;
         if (healthDrainPerSecond <= 0f) return;
 
         healthDrainAccumulator += healthDrainPerSecond * Time.deltaTime;
@@ -151,6 +155,7 @@ public class PlayerStats : MonoBehaviour
     public void TakeDamage(int amount)
     {
         if (amount <= 0 || !IsAlive) return;
+        if (GodMode) return;
 
         int prevHealth = CurrentHealth;
         int absorbed = Mathf.Min(LightOverheal, amount);
