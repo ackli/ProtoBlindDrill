@@ -13,6 +13,14 @@ public class VictoryUIManager : MonoBehaviour
     [Tooltip("Conteneur UI plein écran. Désactivé par défaut, activé à la victoire.")]
     [SerializeField] private GameObject victoryPanel;
 
+    private void Awake()
+    {
+        // Jeu 2D / visée à la souris : le curseur doit TOUJOURS être visible et libre.
+        // Posé ici pour couvrir le cas où Unity retient un lock d'une session Play précédente.
+        Cursor.visible = true;
+        Cursor.lockState = CursorLockMode.None;
+    }
+
     private void OnEnable()
     {
         LevelObjectiveManager.OnLevelCleared += HandleVictory;

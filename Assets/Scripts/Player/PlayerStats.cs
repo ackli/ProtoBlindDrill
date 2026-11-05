@@ -93,6 +93,14 @@ public class PlayerStats : MonoBehaviour
         }
     }
 
+    private void Start()
+    {
+        // Propage l'état initial (HP=MaxHP, Overheal=0) à tous les listeners (TorchHealthLink, UI, ...).
+        // Sans ça, la torche du joueur reste à son rayon de prefab jusqu'au premier dégât, ce qui donne
+        // l'impression d'une "lumière qui s'allume en retard".
+        OnStatsChanged?.Invoke();
+    }
+
     private void Update()
     {
         TickStatusReport();
