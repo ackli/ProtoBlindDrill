@@ -34,6 +34,10 @@ public class PlayerStats : MonoBehaviour
     [Tooltip("Spawn point manuel (utilisé si setSpawnOnStart = false).")]
     [SerializeField] private Vector3 manualSpawnPoint;
 
+    [Header("Telemetry")]
+    [Tooltip("Intervalle (s) du rapport [PLAYER-STATUS]. 0 ou négatif = désactive le rapport périodique.")]
+    [SerializeField] private float statusReportInterval = 5f;
+
     public int MaxHealth => maxHealth;
     public int CurrentHealth { get; private set; }
     public int LightOverheal { get; private set; }
@@ -55,6 +59,10 @@ public class PlayerStats : MonoBehaviour
     private float healthDrainAccumulator;
     private bool deathFired;
 
+    // --- Télémétrie périodique ---
+    private float nextStatusReportTime;
+    private int recentDamageTaken;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
@@ -63,6 +71,8 @@ public class PlayerStats : MonoBehaviour
         LightOverheal = 0;
         healthDrainAccumulator = 0f;
         deathFired = false;
+        nextStatusReportTime = statusReportInterval > 0f ? Time.time + statusReportInterval : float.PositiveInfinity;
+        recentDamageTaken = 0;
     }
 
     private void OnEnable()
@@ -82,6 +92,8 @@ public class PlayerStats : MonoBehaviour
 
     private void Update()
     {
+        TickStatusReport();
+
         // Drain passif de CurrentHealth (bypass du bouclier d'overheal : c'est la "torche qui s'éteint").
         if (!IsAlive) return;
         if (healthDrainPerSecond <= 0f) return;
@@ -91,9 +103,20 @@ public class PlayerStats : MonoBehaviour
         {
             healthDrainAccumulator -= 1f;
             CurrentHealth = Mathf.Max(0, CurrentHealth - 1);
+            recentDamageTaken += 1;
             OnStatsChanged?.Invoke();
             if (CurrentHealth <= 0) Die();
         }
+    }
+
+    private void TickStatusReport()
+    {
+        if (statusReportInterval <= 0f) return;
+        if (Time.time < nextStatusReportTime) return;
+
+        CombatTelemetry.PlayerStatus(Time.time, CurrentHealth, maxHealth, LightOverheal, recentDamageTaken);
+        recentDamageTaken = 0;
+        nextStatusReportTime = Time.time + statusReportInterval;
     }
 
     private IEnumerator OverhealDrainLoop()
@@ -129,11 +152,16 @@ public class PlayerStats : MonoBehaviour
     {
         if (amount <= 0 || !IsAlive) return;
 
+        int prevHealth = CurrentHealth;
         int absorbed = Mathf.Min(LightOverheal, amount);
         LightOverheal -= absorbed;
         int remaining = amount - absorbed;
         if (remaining > 0)
             CurrentHealth = Mathf.Max(0, CurrentHealth - remaining);
+
+        int healthLoss = prevHealth - CurrentHealth;
+        recentDamageTaken += amount;
+        CombatTelemetry.PlayerHit(amount, absorbed, healthLoss, CurrentHealth, maxHealth, LightOverheal);
 
         OnStatsChanged?.Invoke();
 

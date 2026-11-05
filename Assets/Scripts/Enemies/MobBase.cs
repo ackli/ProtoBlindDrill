@@ -42,6 +42,10 @@ public abstract class MobBase : MonoBehaviour
     protected int currentHP;
     protected float waitTimer;
 
+    // --- Télémétrie ---
+    private bool isAggroed;
+    private float spawnTime;
+
     protected virtual void Awake()
     {
         reusablePath = new NavMeshPath();
@@ -50,6 +54,7 @@ public abstract class MobBase : MonoBehaviour
         agent.autoBraking = true;
 
         currentHP = maxHP;
+        spawnTime = Time.time;
 
         if (playerTarget == null)
         {
@@ -78,7 +83,22 @@ public abstract class MobBase : MonoBehaviour
     {
         if (!agent.isOnNavMesh) return;
         TickBehavior();
+        UpdateAggroState();
         SyncVisuals();
+    }
+
+    /// <summary>Évalue "mob engagé" = player présent ET dans detectionRadius. Loggue uniquement les transitions.</summary>
+    private void UpdateAggroState()
+    {
+        bool nowAggroed = playerTarget != null && DistanceToPlayer2D() <= detectionRadius;
+        if (nowAggroed == isAggroed) return;
+
+        isAggroed = nowAggroed;
+        float dist = DistanceToPlayer2D();
+        if (nowAggroed)
+            CombatTelemetry.AggroGained(GetType().Name, GetInstanceID(), dist);
+        else
+            CombatTelemetry.AggroLost(GetType().Name, GetInstanceID(), dist, "hors de portée");
     }
 
     /// <summary>Boucle comportementale propre à chaque mob (chase, attaque, patrouille...).</summary>
@@ -155,17 +175,23 @@ public abstract class MobBase : MonoBehaviour
         if (proj == null) proj = other.GetComponentInParent<DebrisProjectile>();
         if (proj != null)
         {
-            TakeDamage(1);
+            TakeDamage(1, proj.gameObject.name);
             Destroy(proj.gameObject);
         }
     }
 
-    public virtual void TakeDamage(int amount)
+    public virtual void TakeDamage(int amount) => TakeDamage(amount, "Unknown");
+
+    /// <summary>Encaisse des dégâts et loggue l'impact avec la source (nom de GameObject usuel).</summary>
+    public virtual void TakeDamage(int amount, string source)
     {
-        if (currentHP <= 0) return;
+        if (currentHP <= 0 || amount <= 0) return;
         currentHP = Mathf.Max(0, currentHP - amount);
+        CombatTelemetry.MobHit(GetType().Name, GetInstanceID(), amount, source, currentHP, maxHP);
+
         if (currentHP <= 0)
         {
+            CombatTelemetry.MobDeath(GetType().Name, GetInstanceID(), Time.time - spawnTime);
             OnDeath();
             if (visuals != null) Destroy(visuals.gameObject);
             Destroy(gameObject);
