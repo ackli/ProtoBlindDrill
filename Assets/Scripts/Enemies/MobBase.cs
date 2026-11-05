@@ -73,6 +73,7 @@ public abstract class MobBase : MonoBehaviour
     {
         // Détache le visuel 2D : l'agent pilote la racine sur XZ, le visuel doit rester en Z=0.
         if (visuals != null) visuals.parent = null;
+        LevelObjectiveManager.SafeRegister(this);
         OnStart();
     }
 
@@ -206,6 +207,7 @@ public abstract class MobBase : MonoBehaviour
     {
         // Sécurité : Visuals a été détaché, il ne sera pas nettoyé avec la racine.
         if (!gameObject.scene.isLoaded) return;
+        LevelObjectiveManager.SafeUnregister(this);
         if (visuals != null) Destroy(visuals.gameObject);
     }
 

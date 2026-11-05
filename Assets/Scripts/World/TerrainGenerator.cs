@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
@@ -54,7 +55,37 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Générer automatiquement au Start. Décocher si tu peins la Tilemap à la main.")]
     [SerializeField] private bool generateOnStart = true;
 
+    [Header("Arenas")]
+    [Tooltip("Nombre de salles Tier 1 à essayer de placer.")]
+    [SerializeField] private int tier1Count = 2;
+    [Tooltip("Nombre de salles Tier 2 à essayer de placer.")]
+    [SerializeField] private int tier2Count = 1;
+    [Tooltip("Nombre de salles Tier 3 à essayer de placer.")]
+    [SerializeField] private int tier3Count = 1;
+
+    [SerializeField] private Vector2Int tier1Size = new Vector2Int(8, 8);
+    [SerializeField] private Vector2Int tier2Size = new Vector2Int(14, 14);
+    [SerializeField] private Vector2Int tier3Size = new Vector2Int(20, 20);
+
+    [Tooltip("Tentatives de placement par salle avant d'abandonner (évite overlap + spawn safe).")]
+    [SerializeField] private int arenaPlacementAttempts = 30;
+
+    [Header("Arena Mob Prefabs")]
+    [SerializeField] private MobBase crawlerPrefab;
+    [SerializeField] private SpitterController spitterPrefab;
+    [SerializeField] private TrapperController trapperPrefab;
+
+    [Tooltip("Plan Y monde 3D du NavMesh — propagé à chaque ArenaRoom spawnée.")]
+    [SerializeField] private float navMeshY = 100f;
+
+    [Tooltip("Parent facultatif des GameObjects d'arènes. Auto-créé (enfant 'Arenas') si vide.")]
+    [SerializeField] private Transform arenasParent;
+
     private Tilemap tilemap;
+
+    // Rect en coordonnées cellules (xMin/yMin inclus, xMax/yMax exclusif via RectInt).
+    private readonly List<(RectInt rect, ArenaRoom.RoomTier tier)> arenaRects =
+        new List<(RectInt, ArenaRoom.RoomTier)>();
 
     private void Awake()
     {
@@ -80,6 +111,7 @@ public class TerrainGenerator : MonoBehaviour
 
         // On repart d'une Tilemap propre pour éviter les restes d'une génération précédente.
         tilemap.ClearAllTiles();
+        ClearArenaInstances();
 
         int w = topRight.x - bottomLeft.x + 1;
         int h = topRight.y - bottomLeft.y + 1;
@@ -88,6 +120,9 @@ public class TerrainGenerator : MonoBehaviour
             Debug.LogWarning("[TerrainGenerator] Zone invalide (bottomLeft doit être inférieur à topRight).", this);
             return;
         }
+
+        // 1. Place les salles AVANT PickTile : les rects viendront court-circuiter PickTile pour les évider.
+        PlaceArenas();
 
         var positions = new Vector3Int[w * h];
         var tiles = new TileBase[w * h];
@@ -106,6 +141,13 @@ public class TerrainGenerator : MonoBehaviour
         tilemap.SetTiles(positions, tiles);
 
         SyncBlockers(positions, tiles);
+
+        // 2. Instancie les ArenaRoom au centre de chaque rect.
+        SpawnArenaRooms();
+
+        // 3. Signale à l'objectif de niveau que la génération initiale est OK.
+        if (LevelObjectiveManager.Instance != null)
+            LevelObjectiveManager.Instance.MarkInitialGenerationComplete();
     }
 
     /// <summary>
@@ -128,10 +170,11 @@ public class TerrainGenerator : MonoBehaviour
     /// <summary>
     /// Choix de tile par cellule (ordre de priorité strict) :
     /// 1. Bordure (bas + colonnes gauche/droite) → bedrockTile, intacte, jamais vide.
-    /// 2. Zone de spawn haut-centre → null (vide), pour que le joueur ne spawn pas dans un mur.
-    /// 3. Bruit de Perlin des cavités au-dessus de cavityThreshold → null (poche d'air).
-    /// 4. Bruit de Perlin de la pierre au-dessus de stoneThreshold → stoneTile.
-    /// 5. Sinon → dirtTile.
+    /// 2. Zone de spawn haut-centre → null (vide).
+    /// 3. Cellule à l'intérieur d'une arène → null (salle évidée).
+    /// 4. Bruit de Perlin des cavités au-dessus de cavityThreshold → null (poche d'air).
+    /// 5. Bruit de Perlin de la pierre au-dessus de stoneThreshold → stoneTile.
+    /// 6. Sinon → dirtTile.
     /// </summary>
     private TileBase PickTile(int x, int y)
     {
@@ -143,20 +186,34 @@ public class TerrainGenerator : MonoBehaviour
         if (IsInSafeSpawn(x, y))
             return null;
 
-        // 3. Cavités via second bruit de Perlin.
+        // 3. Arènes carved out.
+        if (IsInArena(x, y))
+            return null;
+
+        // 4. Cavités via second bruit de Perlin.
         float cavity = Mathf.PerlinNoise((x + cavitySeed) * cavityScale, (y + cavitySeed) * cavityScale);
         if (cavity > cavityThreshold)
             return null;
 
-        // 4. Pierre (comportement d'origine, inchangé).
+        // 5. Pierre (comportement d'origine, inchangé).
         if (stoneTile != null)
         {
             float n = Mathf.PerlinNoise((x + noiseSeed) * noiseScale, (y + noiseSeed) * noiseScale);
             if (n > stoneThreshold) return stoneTile;
         }
 
-        // 5. Dirt par défaut (le LightOrb-spawn-chance côté DestructibleTerrain reste inchangé).
+        // 6. Dirt par défaut (le LightOrb-spawn-chance côté DestructibleTerrain reste inchangé).
         return dirtTile;
+    }
+
+    private bool IsInArena(int x, int y)
+    {
+        for (int i = 0; i < arenaRects.Count; i++)
+        {
+            var r = arenaRects[i].rect;
+            if (x >= r.xMin && x < r.xMax && y >= r.yMin && y < r.yMax) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -180,5 +237,125 @@ public class TerrainGenerator : MonoBehaviour
     public void Clear()
     {
         tilemap.ClearAllTiles();
+        ClearArenaInstances();
+        arenaRects.Clear();
+    }
+
+    // =========================================================================
+    // Arènes
+    // =========================================================================
+
+    private void PlaceArenas()
+    {
+        arenaRects.Clear();
+        // Du plus gros au plus petit : les grandes salles sont plus dures à caser, on les sert d'abord.
+        PlaceTier(ArenaRoom.RoomTier.Tier3, tier3Count, tier3Size);
+        PlaceTier(ArenaRoom.RoomTier.Tier2, tier2Count, tier2Size);
+        PlaceTier(ArenaRoom.RoomTier.Tier1, tier1Count, tier1Size);
+    }
+
+    private void PlaceTier(ArenaRoom.RoomTier tier, int count, Vector2Int size)
+    {
+        if (count <= 0 || size.x <= 0 || size.y <= 0) return;
+
+        // On évite la bordure Bedrock (1 cellule) et on veut que le rect tienne entièrement dans la zone.
+        int minX = bottomLeft.x + 1;
+        int minY = bottomLeft.y + 1;
+        int maxX = topRight.x - size.x;    // xMax exclu = minX + size → xMax ≤ topRight.x
+        int maxY = topRight.y - size.y;
+
+        if (maxX < minX || maxY < minY)
+        {
+            Debug.LogWarning($"[TerrainGenerator] Salle {tier} ({size.x}x{size.y}) trop grande pour la zone.", this);
+            return;
+        }
+
+        int placed = 0;
+        for (int i = 0; i < count; i++)
+        {
+            bool ok = false;
+            for (int attempt = 0; attempt < arenaPlacementAttempts; attempt++)
+            {
+                int rx = Random.Range(minX, maxX + 1);
+                int ry = Random.Range(minY, maxY + 1);
+                var rect = new RectInt(rx, ry, size.x, size.y);
+                if (OverlapsAnyArena(rect)) continue;
+                if (OverlapsSafeSpawn(rect)) continue;
+                arenaRects.Add((rect, tier));
+                placed++;
+                ok = true;
+                break;
+            }
+            if (!ok)
+                Debug.LogWarning($"[TerrainGenerator] Impossible de placer une salle {tier} après {arenaPlacementAttempts} essais.", this);
+        }
+    }
+
+    private bool OverlapsAnyArena(RectInt r)
+    {
+        for (int i = 0; i < arenaRects.Count; i++)
+            if (arenaRects[i].rect.Overlaps(r)) return true;
+        return false;
+    }
+
+    private bool OverlapsSafeSpawn(RectInt r)
+    {
+        if (safeSpawnWidth <= 0 || safeSpawnHeight <= 0) return false;
+        int centerX = (bottomLeft.x + topRight.x) / 2;
+        int halfW = safeSpawnWidth / 2;
+        int sMinX = centerX - halfW;
+        int sMinY = topRight.y - safeSpawnHeight + 1;
+        var safe = new RectInt(sMinX, sMinY, safeSpawnWidth, safeSpawnHeight);
+        return r.Overlaps(safe);
+    }
+
+    private void EnsureArenasParent()
+    {
+        if (arenasParent != null) return;
+        var existing = transform.Find("Arenas");
+        if (existing != null) { arenasParent = existing; return; }
+        var go = new GameObject("Arenas");
+        go.transform.SetParent(transform, worldPositionStays: false);
+        arenasParent = go.transform;
+    }
+
+    private void ClearArenaInstances()
+    {
+        if (arenasParent == null)
+        {
+            var existing = transform.Find("Arenas");
+            if (existing != null) arenasParent = existing;
+            else return;
+        }
+        for (int i = arenasParent.childCount - 1; i >= 0; i--)
+        {
+            var child = arenasParent.GetChild(i).gameObject;
+            if (Application.isPlaying) Destroy(child);
+            else DestroyImmediate(child);
+        }
+    }
+
+    private void SpawnArenaRooms()
+    {
+        if (arenaRects.Count == 0) return;
+        EnsureArenasParent();
+
+        foreach (var entry in arenaRects)
+        {
+            var rect = entry.rect;
+            // RectInt.xMax/yMax sont exclusifs → CellToWorld renvoie la position du coin opposé.
+            Vector3 wMin = tilemap.CellToWorld(new Vector3Int(rect.xMin, rect.yMin, 0));
+            Vector3 wMax = tilemap.CellToWorld(new Vector3Int(rect.xMax, rect.yMax, 0));
+            Vector3 center = (wMin + wMax) * 0.5f;
+            center.z = 0f;
+            Vector2 worldSize = new Vector2(wMax.x - wMin.x, wMax.y - wMin.y);
+
+            var go = new GameObject($"Arena_{entry.tier}");
+            go.transform.SetParent(arenasParent, worldPositionStays: false);
+            go.transform.position = center;
+
+            var arena = go.AddComponent<ArenaRoom>();
+            arena.Configure(entry.tier, crawlerPrefab, spitterPrefab, trapperPrefab, worldSize, navMeshY);
+        }
     }
 }
