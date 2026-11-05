@@ -17,10 +17,10 @@ public class TerrainGenerator : MonoBehaviour
 
     [Header("Zone")]
     [Tooltip("Coin inférieur gauche (cellules) de la zone à remplir, inclus.")]
-    [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-20, -62);
+    [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-40, -92);
 
     [Tooltip("Coin supérieur droit (cellules) de la zone à remplir, inclus.")]
-    [SerializeField] private Vector2Int topRight = new Vector2Int(20, -3);
+    [SerializeField] private Vector2Int topRight = new Vector2Int(40, -3);
 
     [Header("Stone Noise")]
     [Tooltip("Seuil du bruit de Perlin au-dessus duquel on place stoneTile. 1 = jamais, 0 = partout.")]
@@ -68,7 +68,24 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private Vector2Int tier3Size = new Vector2Int(20, 20);
 
     [Tooltip("Tentatives de placement par salle avant d'abandonner (évite overlap + spawn safe).")]
-    [SerializeField] private int arenaPlacementAttempts = 30;
+    [SerializeField] private int arenaPlacementAttempts = 100;
+
+    [Header("Arena Platforms (Tier 2 & 3)")]
+    [Tooltip("Nombre de cellules à partir du sol de la salle à laisser vides avant la première rangée de plateformes.")]
+    [SerializeField] private int platformFloorClearance = 2;
+
+    [Tooltip("Écart vertical (cellules) entre deux rangées de plateformes. Doit laisser ≥ 3 cases libres pour laisser passer le joueur (2 cases de haut + headroom).")]
+    [SerializeField] private int platformRowSpacing = 4;
+
+    [Tooltip("Fréquence du bruit de Perlin le long de X pour les plateformes. ~0.3–0.5 donne des grappes de 3–5 cellules.")]
+    [SerializeField] private float platformNoiseScale = 0.35f;
+
+    [Tooltip("Seuil au-dessus duquel une cellule de rangée-plateforme reçoit un bloc.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float platformNoiseThreshold = 0.55f;
+
+    [Tooltip("Seed indépendante du bruit des plateformes.")]
+    [SerializeField] private int platformSeed = 42;
 
     [Header("Arena Mob Prefabs")]
     [SerializeField] private MobBase crawlerPrefab;
@@ -171,7 +188,9 @@ public class TerrainGenerator : MonoBehaviour
     /// Choix de tile par cellule (ordre de priorité strict) :
     /// 1. Bordure (bas + colonnes gauche/droite) → bedrockTile, intacte, jamais vide.
     /// 2. Zone de spawn haut-centre → null (vide).
-    /// 3. Cellule à l'intérieur d'une arène → null (salle évidée).
+    /// 3. Cellule dans une arène :
+    ///    - Tier 1 : null (salle totalement évidée).
+    ///    - Tier 2 / Tier 3 : dirtTile si la cellule tombe sur une plateforme Perlin, sinon null.
     /// 4. Bruit de Perlin des cavités au-dessus de cavityThreshold → null (poche d'air).
     /// 5. Bruit de Perlin de la pierre au-dessus de stoneThreshold → stoneTile.
     /// 6. Sinon → dirtTile.
@@ -186,9 +205,13 @@ public class TerrainGenerator : MonoBehaviour
         if (IsInSafeSpawn(x, y))
             return null;
 
-        // 3. Arènes carved out.
-        if (IsInArena(x, y))
+        // 3. Arènes : vide pour Tier 1, plateformes Perlin pour Tier 2/3.
+        if (TryGetArenaCell(x, y, out var rect, out var tier))
+        {
+            if (tier == ArenaRoom.RoomTier.Tier1) return null;
+            if (IsArenaPlatformCell(x, y, rect)) return dirtTile;
             return null;
+        }
 
         // 4. Cavités via second bruit de Perlin.
         float cavity = Mathf.PerlinNoise((x + cavitySeed) * cavityScale, (y + cavitySeed) * cavityScale);
@@ -206,14 +229,47 @@ public class TerrainGenerator : MonoBehaviour
         return dirtTile;
     }
 
-    private bool IsInArena(int x, int y)
+    private bool TryGetArenaCell(int x, int y, out RectInt rect, out ArenaRoom.RoomTier tier)
     {
         for (int i = 0; i < arenaRects.Count; i++)
         {
             var r = arenaRects[i].rect;
-            if (x >= r.xMin && x < r.xMax && y >= r.yMin && y < r.yMax) return true;
+            if (x >= r.xMin && x < r.xMax && y >= r.yMin && y < r.yMax)
+            {
+                rect = r;
+                tier = arenaRects[i].tier;
+                return true;
+            }
         }
-        return false;
+        rect = default; tier = default; return false;
+    }
+
+    /// <summary>
+    /// Vrai si (x,y) tombe sur une rangée-plateforme ET passe le test de bruit Perlin.
+    /// Laisse 1 cellule de contour vide sur chaque bord + platformFloorClearance au-dessus du sol
+    /// pour ne pas gêner les triggers / spawn / mobilité des mobs.
+    /// </summary>
+    private bool IsArenaPlatformCell(int x, int y, RectInt rect)
+    {
+        // 1 cellule de contour vide sur chaque bord (pas de plateforme collée au mur).
+        if (x <= rect.xMin || x >= rect.xMax - 1) return false;
+        if (y <= rect.yMin || y >= rect.yMax - 1) return false;
+
+        // Sol dégagé : les N premières cellules au-dessus du sol sont vides.
+        int localY = y - rect.yMin;
+        if (localY < platformFloorClearance) return false;
+
+        // Rangée-plateforme : une rangée tous les `platformRowSpacing` cellules à partir du sol+clearance.
+        int rowMod = localY - platformFloorClearance;
+        if (platformRowSpacing <= 0) return false;
+        if (rowMod % platformRowSpacing != 0) return false;
+
+        // Grappes horizontales via Perlin 1D sur X, indexées par rangée (pour varier entre les niveaux).
+        int rowIndex = rowMod / platformRowSpacing;
+        float n = Mathf.PerlinNoise(
+            (x + platformSeed) * platformNoiseScale,
+            (rowIndex + platformSeed) * 0.9f);
+        return n > platformNoiseThreshold;
     }
 
     /// <summary>
