@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
@@ -98,6 +99,13 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Parent facultatif des GameObjects d'arènes. Auto-créé (enfant 'Arenas') si vide.")]
     [SerializeField] private Transform arenasParent;
 
+    [Header("NavMesh")]
+    [Tooltip("Transform du plan 3D (NavMeshPlane3D) qui sera repositionné + redimensionné pour épouser la grille à chaque Generate.")]
+    public Transform navMeshPlaneTransform;
+
+    [Tooltip("NavMeshSurface associée — re-bake automatiquement en fin de redimensionnement et AVANT que les Blockers ne viennent carver.")]
+    public NavMeshSurface navMeshSurface;
+
     private Tilemap tilemap;
 
     // Rect en coordonnées cellules (xMin/yMin inclus, xMax/yMax exclusif via RectInt).
@@ -107,6 +115,10 @@ public class TerrainGenerator : MonoBehaviour
     private void Awake()
     {
         tilemap = GetComponent<Tilemap>();
+        // Fit + bake NavMesh dès Awake — AVANT que n'importe quel mob (pré-placé ou instancié par une arène)
+        // ne tente d'attacher son NavMeshAgent. Supprime la race condition "Resume can only be called on
+        // an active agent that has been placed on a NavMesh".
+        FitAndBakeNavMesh();
     }
 
     private void Start()
@@ -130,13 +142,18 @@ public class TerrainGenerator : MonoBehaviour
         tilemap.ClearAllTiles();
         ClearArenaInstances();
 
-        int w = topRight.x - bottomLeft.x + 1;
-        int h = topRight.y - bottomLeft.y + 1;
+        int minX = bottomLeft.x, maxX = topRight.x;
+        int minY = bottomLeft.y, maxY = topRight.y;
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
         if (w <= 0 || h <= 0)
         {
             Debug.LogWarning("[TerrainGenerator] Zone invalide (bottomLeft doit être inférieur à topRight).", this);
             return;
         }
+
+        // NavMesh : Awake a déjà fait le fit + bake. On n'y retouche pas ici (évite une double-bake).
+        // Si les bornes ont changé au runtime, rappeler FitAndBakeNavMesh() manuellement avant Generate().
 
         // 1. Place les salles AVANT PickTile : les rects viendront court-circuiter PickTile pour les évider.
         PlaceArenas();
@@ -295,6 +312,56 @@ public class TerrainGenerator : MonoBehaviour
         tilemap.ClearAllTiles();
         ClearArenaInstances();
         arenaRects.Clear();
+    }
+
+    // =========================================================================
+    // NavMesh
+    // =========================================================================
+
+    /// <summary>
+    /// Repositionne et rescale le plan 3D pour qu'il épouse exactement la zone de génération.
+    /// Détecte automatiquement la taille unitaire du mesh (Cube=1, Plane=10) pour calculer la scale,
+    /// préserve la localScale.y pour garder l'épaisseur voulue du slab.
+    /// </summary>
+    private void FitNavMeshPlane(int minX, int maxX, int minY, int maxY)
+    {
+        if (navMeshPlaneTransform == null) return;
+        float width = maxX - minX;
+        float depth = maxY - minY;
+        navMeshPlaneTransform.position = new Vector3((minX + maxX) / 2f, navMeshY, (minY + maxY) / 2f);
+
+        // Taille unitaire du mesh : Cube Unity = 1, Plane Unity = 10. On divise par cette taille
+        // pour que la scale reflète directement les dimensions monde attendues.
+        var mf = navMeshPlaneTransform.GetComponent<MeshFilter>();
+        float meshSizeX = (mf != null && mf.sharedMesh != null) ? mf.sharedMesh.bounds.size.x : 10f;
+        float meshSizeZ = (mf != null && mf.sharedMesh != null) ? mf.sharedMesh.bounds.size.z : 10f;
+        if (meshSizeX < 0.001f) meshSizeX = 10f;
+        if (meshSizeZ < 0.001f) meshSizeZ = 10f;
+
+        float yScale = navMeshPlaneTransform.localScale.y;
+        if (yScale < 0.001f) yScale = 0.1f;
+
+        navMeshPlaneTransform.localScale = new Vector3(width / meshSizeX, yScale, depth / meshSizeZ);
+    }
+
+    /// <summary>
+    /// Fit + bake complet, synchrone. Appelé en Awake pour éviter la race avec les mobs.
+    /// Également appelable manuellement si tu changes bottomLeft/topRight au runtime.
+    /// Loggue le nombre de triangles post-bake pour vérifier côté console que le NavMesh n'est pas vide.
+    /// </summary>
+    [ContextMenu("Fit and Bake NavMesh")]
+    public void FitAndBakeNavMesh()
+    {
+        FitNavMeshPlane(bottomLeft.x, topRight.x, bottomLeft.y, topRight.y);
+        if (navMeshSurface == null) return;
+
+        navMeshSurface.BuildNavMesh();
+        var tri = UnityEngine.AI.NavMesh.CalculateTriangulation();
+        int triCount = tri.indices.Length / 3;
+        if (triCount == 0)
+            Debug.LogError($"[TerrainGenerator] NavMesh bake VIDE (0 triangles) — vérifie CollectObjects + Navigation Static du plane.", this);
+        else
+            Debug.Log($"[TerrainGenerator] NavMesh baké : {tri.vertices.Length} vertices, {triCount} triangles.", this);
     }
 
     // =========================================================================

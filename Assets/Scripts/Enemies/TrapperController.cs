@@ -57,6 +57,7 @@ public class TrapperController : MobBase
 
     private void PickAvoidPoint()
     {
+        if (!agent.isOnNavMesh) return;
         if (agent.pathPending) return;
         if (agent.remainingDistance > agent.stoppingDistance + 0.1f) return;
 
@@ -85,6 +86,7 @@ public class TrapperController : MobBase
 
     private void EnterPatrol()
     {
+        if (!agent.isOnNavMesh) return;
         state = State.Patrol;
         agent.speed = patrolSpeed;
         waitTimer = 0f;

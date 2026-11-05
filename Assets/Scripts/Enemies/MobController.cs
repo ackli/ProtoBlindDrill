@@ -39,6 +39,7 @@ public class MobController : MobBase
 
     private void EnterPatrol()
     {
+        if (!agent.isOnNavMesh) return;
         state = State.Patrol;
         agent.speed = patrolSpeed;
         waitTimer = 0f;

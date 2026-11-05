@@ -102,6 +102,7 @@ public class SpitterController : MobBase
 
     private void EnterFlee()
     {
+        if (!agent.isOnNavMesh) return;
         if (state != State.Flee)
         {
             state = State.Flee;
@@ -146,6 +147,7 @@ public class SpitterController : MobBase
 
     private void EnterPatrol()
     {
+        if (!agent.isOnNavMesh) return;
         state = State.Patrol;
         agent.isStopped = false;
         agent.speed = patrolSpeed;

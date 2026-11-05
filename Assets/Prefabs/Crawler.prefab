@@ -41,7 +41,7 @@ NavMeshAgent:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5264455618544252167}
-  m_Enabled: 1
+  m_Enabled: 0
   m_AgentTypeID: 0
   m_Radius: 0.4
   m_Speed: 2
@@ -68,15 +68,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b4b3b5552d9b8494e84415b1cb6ed342, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MobController
+  navMeshY: 100
   maxHP: 3
   damageToPlayer: 1
   detectionRadius: 8
   patrolRadius: 5
   patrolWait: 1
   patrolSpeed: 2
-  chaseSpeed: 3
   sampleRadius: 2
   playerTarget: {fileID: 0}
+  visuals: {fileID: 0}
+  chaseSpeed: 3
 --- !u!1 &8272626861420938913
 GameObject:
   m_ObjectHideFlags: 0

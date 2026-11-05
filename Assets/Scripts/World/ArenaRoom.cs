@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 /// <summary>
 /// Salle d'arène : BoxCollider2D trigger qui, à la première entrée du joueur, spawne la vague
@@ -81,8 +82,16 @@ public class ArenaRoom : MonoBehaviour
         if (prefab == null) return;
         Vector2 offset = Random.insideUnitCircle * spawnSpreadRadius;
         Vector3 c = transform.position;
-        // (c.x + offX, Y=navMeshY, c.y + offY) : projection 2D vers NavMesh 3D.
-        Vector3 pos3D = new Vector3(c.x + offset.x, navMeshY, c.y + offset.y);
-        Instantiate(prefab, pos3D, Quaternion.identity);
+        // Position idéale (c.x + offX, Y=navMeshY, c.y + offY) : projection 2D → NavMesh 3D.
+        Vector3 idealPos = new Vector3(c.x + offset.x, navMeshY, c.y + offset.y);
+
+        // Snap sur NavMesh : évite de spawner à l'intérieur d'un NavMeshObstacle Carve (bloc de plateforme).
+        Vector3 spawnPos;
+        if (NavMesh.SamplePosition(idealPos, out var hit, 4.0f, NavMesh.AllAreas))
+            spawnPos = hit.position;
+        else
+            spawnPos = new Vector3(c.x, navMeshY, c.y); // fallback : centre strict de la salle
+
+        Instantiate(prefab, spawnPos, Quaternion.identity);
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -50,8 +51,11 @@ public abstract class MobBase : MonoBehaviour
     {
         reusablePath = new NavMeshPath();
         agent = GetComponent<NavMeshAgent>();
-        agent.updateRotation = false;
-        agent.autoBraking = true;
+        // Agent reste DÉSACTIVÉ jusqu'au Lazy Enable en coroutine — évite le crash natif
+        // "Failed to create agent because it is not close enough to the NavMesh" qui se
+        // déclenchait dans Instantiate avant même que nos scripts n'aient la main.
+        // Les prefabs sont aussi désactivés par défaut (double verrou).
+        agent.enabled = false;
 
         currentHP = maxHP;
         spawnTime = Time.time;
@@ -74,11 +78,59 @@ public abstract class MobBase : MonoBehaviour
         // Détache le visuel 2D : l'agent pilote la racine sur XZ, le visuel doit rester en Z=0.
         if (visuals != null) visuals.parent = null;
         LevelObjectiveManager.SafeRegister(this);
-        OnStart();
+        StartCoroutine(WaitForNavMeshAndStart());
     }
 
-    /// <summary>Hook post-détachement, après Start de la base.</summary>
+    /// <summary>Hook post-attachement NavMesh, appelé une fois que l'agent est bien accroché.</summary>
     protected virtual void OnStart() { }
+
+    /// <summary>
+    /// Attend que le NavMesh soit prêt (bake fait + agent accroché) avant d'appeler <see cref="OnStart"/>.
+    /// Évite la race condition "Resume can only be called on an active agent that has been placed on a NavMesh"
+    /// quand le TerrainGenerator fit+bake la surface au même frame que le mob se spawne.
+    /// Tente un <see cref="NavMeshAgent.Warp"/> chaque frame vers le point NavMesh le plus proche.
+    /// </summary>
+    /// <summary>
+    /// Séquence d'initialisation "Lazy Enable" du NavMeshAgent. L'agent reste désactivé au moment
+    /// de Instantiate (prefab + Awake), on le place physiquement sur un point NavMesh valide,
+    /// puis on l'active et on laisse une frame à Unity pour qu'il s'accroche.
+    /// Évite complètement l'erreur native "Failed to create agent" qui se déclenchait avant
+    /// que nos scripts n'aient la main.
+    /// </summary>
+    private IEnumerator WaitForNavMeshAndStart()
+    {
+        // 1. Laisse passer la frame d'instanciation.
+        yield return null;
+
+        // 2. Point NavMesh légal à proximité (rayon 10 unités — large, compense les trous locaux de bake).
+        if (!NavMesh.SamplePosition(transform.position, out var hit, 10.0f, NavMesh.AllAreas))
+        {
+            Debug.LogError($"[MobBase] {name} : aucun point NavMesh trouvé dans un rayon de 10 autour de {transform.position}. Mob inactif.", this);
+            yield break;
+        }
+
+        // 3. Déplace physiquement le GO sur le point légal.
+        transform.position = hit.position;
+
+        // 4. Active l'agent (c'est maintenant qu'il va créer son instance native et s'accrocher).
+        agent.enabled = true;
+
+        // Config post-enable : certaines props veulent un agent actif pour être propagées.
+        agent.updateRotation = false;
+        agent.autoBraking = true;
+
+        // 5. Laisse Unity lier l'agent au NavMesh.
+        yield return null;
+
+        // 6. Vérification finale + démarrage comportemental.
+        if (!agent.isOnNavMesh)
+        {
+            Debug.LogError($"[MobBase] {name} : agent activé mais isOnNavMesh=false après 1 frame à {transform.position}. Mob inactif.", this);
+            yield break;
+        }
+
+        OnStart();
+    }
 
     protected virtual void Update()
     {
@@ -148,6 +200,7 @@ public abstract class MobBase : MonoBehaviour
 
     protected void PickPatrolPoint()
     {
+        if (!agent.isOnNavMesh) return; // garde défensive : SetDestination impossible hors NavMesh.
         Vector3 center = new Vector3(transform.position.x, navMeshY, transform.position.z);
         for (int i = 0; i < 10; i++)
         {
