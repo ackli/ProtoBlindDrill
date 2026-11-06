@@ -41,8 +41,20 @@ public class PlayerStats : MonoBehaviour
     public int MaxHealth => maxHealth;
     public int CurrentHealth { get; private set; }
     public int LightOverheal { get; private set; }
-    public int MaxOverheal => maxOverheal;
+    /// <summary>Plafond d'Overheal courant, boosté par <see cref="OverhealBonusPercent"/>.</summary>
+    public int MaxOverheal => Mathf.Max(0, Mathf.RoundToInt(maxOverheal * (1f + overhealBonusPercent / 100f)));
     public bool IsAlive => CurrentHealth > 0;
+
+    // --- Buff stacks (reliques). Cumulatifs en %, 0 au start. ---
+    private float overhealBonusPercent;
+    private float damageBonusPercent;
+    private float defenseBonusPercent;
+
+    public float OverhealBonusPercent => overhealBonusPercent;
+    public float DamageBonusPercent => damageBonusPercent;
+    public float DefenseBonusPercent => defenseBonusPercent;
+    /// <summary>Multiplicateur de dégâts INFLIGÉS à utiliser côté armes (1 au départ, grandit avec les buffs).</summary>
+    public float DamageMultiplier => 1f + damageBonusPercent / 100f;
 
     /// <summary>Hook de triche : quand true, court-circuite TakeDamage et le drain passif. Piloté par DebugCheatController.</summary>
     public bool GodMode { get; set; }
@@ -69,6 +81,9 @@ public class PlayerStats : MonoBehaviour
     /// son panneau de recommencement.
     /// </summary>
     public event Action OnGameOver;
+
+    /// <summary>Levé à chaque application d'un buff (ApplyRandomBuff), pour l'UI stats.</summary>
+    public event Action OnBuffsChanged;
 
     private Rigidbody2D rb;
     private Vector3 spawnPoint;
@@ -195,6 +210,11 @@ public class PlayerStats : MonoBehaviour
         if (amount <= 0 || !IsAlive) return;
         if (GodMode) return;
 
+        // Buff Defense : réduit les dégâts entrants. Capé pour que defense ne rende pas immortel
+        // (au moins 1 PV encaissé pour ne pas trivialiser les projectiles d'1 point, et au plus 90 % absorbés).
+        float incomingMult = Mathf.Max(0.1f, 1f - defenseBonusPercent / 100f);
+        amount = Mathf.Max(1, Mathf.RoundToInt(amount * incomingMult));
+
         int prevHealth = CurrentHealth;
         int absorbed = Mathf.Min(LightOverheal, amount);
         LightOverheal -= absorbed;
@@ -262,4 +282,34 @@ public class PlayerStats : MonoBehaviour
     }
 
     public void SetSpawnPoint(Vector3 worldPos) => spawnPoint = worldPos;
+
+    /// <summary>
+    /// Tire au sort un des trois buffs (Overheal plafond, Damage multiplier, Defense multiplier)
+    /// et ajoute <paramref name="percentPerPick"/> points de pourcentage au stack. Log + event.
+    /// Sans effet si le joueur est mort (évite les orbes récoltés post-mortem).
+    /// </summary>
+    public void ApplyRandomBuff(float percentPerPick = 10f)
+    {
+        if (!IsAlive) return;
+        int roll = UnityEngine.Random.Range(0, 3);
+        string label;
+        switch (roll)
+        {
+            case 0:
+                overhealBonusPercent += percentPerPick;
+                label = $"Overheal plafond +{percentPerPick}% (total {overhealBonusPercent}%). Nouveau MaxOverheal = {MaxOverheal}.";
+                break;
+            case 1:
+                damageBonusPercent += percentPerPick;
+                label = $"Dégâts +{percentPerPick}% (total {damageBonusPercent}%). DamageMultiplier = {DamageMultiplier:F2}.";
+                break;
+            default:
+                defenseBonusPercent += percentPerPick;
+                label = $"Défense +{percentPerPick}% (total {defenseBonusPercent}%).";
+                break;
+        }
+        Debug.Log($"[BUFF] {label}");
+        OnStatsChanged?.Invoke();
+        OnBuffsChanged?.Invoke();
+    }
 }

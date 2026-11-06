@@ -4,6 +4,16 @@ using UnityEngine;
 [RequireComponent(typeof(CircleCollider2D))]
 public class DebrisProjectile : MonoBehaviour
 {
+    [Header("Damage")]
+    [Tooltip("Dégâts infligés aux mobs touchés. Set par ShootingController au spawn, multiplié par PlayerStats.DamageMultiplier pour intégrer le buff Damage des reliques.")]
+    [SerializeField] private int damage = 1;
+
+    /// <summary>Dégâts que ce projectile applique au MobBase touché. Set via <see cref="SetDamage"/>.</summary>
+    public int Damage => damage;
+
+    /// <summary>Appelé par l'émetteur (ShootingController) juste après Instantiate pour intégrer le multiplicateur de dégâts du joueur.</summary>
+    public void SetDamage(int value) => damage = Mathf.Max(1, value);
+
     [Header("Lifetime")]
     [Tooltip("Durée (s) avant auto-destruction si le projectile n'a rien touché.")]
     [SerializeField] private float lifeTime = 2.5f;

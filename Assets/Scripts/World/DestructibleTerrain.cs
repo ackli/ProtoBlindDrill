@@ -44,8 +44,11 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Parent des instances de reliques. Auto-créé (enfant 'Relics') si vide.")]
     [SerializeField] private Transform relicsParent;
 
-    [Tooltip("Nombre de LightOrbs spawnés à la destruction d'une relique. La récompense justifie l'apparition rare du bloc.")]
+    [Tooltip("Nombre de LightOrbs spawnés à la destruction d'une relique. La récompense justifie l'apparition rare du bloc. Ignoré si buffOrbPrefab est assigné (c'est alors un unique BuffOrb qui spawne).")]
     [SerializeField] private int relicOrbReward = 3;
+
+    [Tooltip("Orbe de buff (prefab avec composant BuffOrb) dropé par la relique. Si assigné, remplace le drop de LightOrbs — la relique devient porteuse d'un bonus permanent de session.")]
+    [SerializeField] private BuffOrb buffOrbPrefab;
 
     private Tilemap tilemap;
     private readonly Dictionary<Vector3Int, int> cellHP = new Dictionary<Vector3Int, int>();
@@ -194,13 +197,22 @@ public class DestructibleTerrain : MonoBehaviour
 
         Vector3 pos = tilemap.GetCellCenterWorld(cell);
 
-        // Relique : drop garanti, multiplié par relicOrbReward (récompense de la découverte LOS).
+        // Relique : si un BuffOrb est configuré, il remplace les LightOrbs (récompense = buff permanent).
+        // Sinon, fallback historique : relicOrbReward LightOrbs (pour le playtest quand le buff n'est pas câblé).
         if (tile.material == DestructibleTile.MaterialType.UpgradeRelic)
         {
-            int count = Mathf.Max(1, relicOrbReward);
-            for (int i = 0; i < count; i++)
-                Instantiate(lightOrbPrefab, pos, Quaternion.identity);
-            Debug.Log($"[RELIC-MINED] cell=({cell.x},{cell.y}) worldPos=({pos.x:F1},{pos.y:F1}) → {count} LightOrb(s) spawnés.");
+            if (buffOrbPrefab != null)
+            {
+                Instantiate(buffOrbPrefab, pos, Quaternion.identity);
+                Debug.Log($"[RELIC-MINED] cell=({cell.x},{cell.y}) worldPos=({pos.x:F1},{pos.y:F1}) → 1 BuffOrb spawné.");
+            }
+            else
+            {
+                int count = Mathf.Max(1, relicOrbReward);
+                for (int i = 0; i < count; i++)
+                    Instantiate(lightOrbPrefab, pos, Quaternion.identity);
+                Debug.Log($"[RELIC-MINED] cell=({cell.x},{cell.y}) worldPos=({pos.x:F1},{pos.y:F1}) → {count} LightOrb(s) (fallback, BuffOrb non assigné).");
+            }
             return;
         }
 

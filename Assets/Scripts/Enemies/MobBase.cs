@@ -229,7 +229,8 @@ public abstract class MobBase : MonoBehaviour
         if (proj == null) proj = other.GetComponentInParent<DebrisProjectile>();
         if (proj != null)
         {
-            int dmg = DebugCheatController.OneShotKillEnabled ? 9999 : 1;
+            // Le damage porté par le projectile intègre déjà le multiplicateur de buff côté ShootingController.
+            int dmg = DebugCheatController.OneShotKillEnabled ? 9999 : Mathf.Max(1, proj.Damage);
             TakeDamage(dmg, proj.gameObject.name);
             Destroy(proj.gameObject);
         }

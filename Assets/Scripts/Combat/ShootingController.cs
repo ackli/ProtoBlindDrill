@@ -39,7 +39,12 @@ public class ShootingController : MonoBehaviour
     [Tooltip("Référencer PlayerInputActions.inputactions.")]
     [SerializeField] private InputActionAsset inputActions;
 
+    [Header("Damage")]
+    [Tooltip("Dégâts de base d'un tir. Multipliés par PlayerStats.DamageMultiplier au spawn pour intégrer les buffs reliques.")]
+    [SerializeField] private int baseDamage = 1;
+
     private Rigidbody2D rb;
+    private PlayerStats stats;
     private InputAction shootAction;
     private InputAction aimAction;
     private float nextFireTime;
@@ -47,6 +52,7 @@ public class ShootingController : MonoBehaviour
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        stats = GetComponent<PlayerStats>();
         if (targetCamera == null) targetCamera = Camera.main;
 
         if (inputActions == null)
@@ -89,6 +95,8 @@ public class ShootingController : MonoBehaviour
         // Spawn au bord du collider (muzzleOffset) pour éviter que le projectile touche le joueur.
         Vector3 spawnPos = transform.position + (Vector3)(direction * muzzleOffset);
         var projectile = Instantiate(projectilePrefab, spawnPos, Quaternion.identity);
+        float mult = stats != null ? stats.DamageMultiplier : 1f;
+        projectile.SetDamage(Mathf.Max(1, Mathf.RoundToInt(baseDamage * mult)));
         projectile.Launch(direction, projectileSpeed);
 
         ApplyKnockback(-direction);
