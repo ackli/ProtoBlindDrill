@@ -50,6 +50,13 @@ public class PlayerStats : MonoBehaviour
     /// <summary>Levé après toute variation (Heal, TakeDamage, drain passif). Pour l'UI.</summary>
     public event Action OnStatsChanged;
 
+    /// <summary>
+    /// Levé uniquement quand <see cref="LightOverheal"/> change (gain via Heal, absorption via TakeDamage,
+    /// drain passif via <see cref="OverhealDrainLoop"/>, reset via Respawn). Signature : (current, max).
+    /// Pour l'UI dédiée de la jauge d'overheal (OverhealUI).
+    /// </summary>
+    public event Action<int, int> OnOverhealChanged;
+
     /// <summary>Levé juste avant le reset de position / stats dans Respawn().</summary>
     public event Action OnDeath;
 
@@ -71,7 +78,9 @@ public class PlayerStats : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         spawnPoint = setSpawnOnStart ? transform.position : manualSpawnPoint;
         CurrentHealth = maxHealth;
-        LightOverheal = 0;
+        // Spawn avec l'Overheal plein : il sert de tempo-tampon qui verrouille CurrentHealth
+        // (et donc la torche) tant qu'il n'est pas vide, cf. le drain passif dans Update().
+        LightOverheal = maxOverheal;
         healthDrainAccumulator = 0f;
         deathFired = false;
         nextStatusReportTime = statusReportInterval > 0f ? Time.time + statusReportInterval : float.PositiveInfinity;
@@ -99,16 +108,25 @@ public class PlayerStats : MonoBehaviour
         // Sans ça, la torche du joueur reste à son rayon de prefab jusqu'au premier dégât, ce qui donne
         // l'impression d'une "lumière qui s'allume en retard".
         OnStatsChanged?.Invoke();
+        OnOverhealChanged?.Invoke(LightOverheal, maxOverheal);
     }
 
     private void Update()
     {
         TickStatusReport();
 
-        // Drain passif de CurrentHealth (bypass du bouclier d'overheal : c'est la "torche qui s'éteint").
+        // Drain passif de CurrentHealth ("la torche qui s'éteint"). VERROUILLÉ tant que
+        // LightOverheal > 0 : l'overheal donne le tempo (via OverhealDrainLoop, 1 point / interval),
+        // et c'est seulement quand ce tampon est entièrement vide que la santé — et donc le rayon
+        // de la torche piloté par TorchHealthLink — recommence à décliner.
         if (!IsAlive) return;
         if (GodMode) return;
         if (healthDrainPerSecond <= 0f) return;
+        if (LightOverheal > 0)
+        {
+            healthDrainAccumulator = 0f; // reset pour ne pas lâcher un gros chunk au moment où l'overheal tombe à 0
+            return;
+        }
 
         healthDrainAccumulator += healthDrainPerSecond * Time.deltaTime;
         while (healthDrainAccumulator >= 1f && IsAlive)
@@ -141,6 +159,7 @@ public class PlayerStats : MonoBehaviour
             {
                 LightOverheal--;
                 OnStatsChanged?.Invoke();
+                OnOverhealChanged?.Invoke(LightOverheal, maxOverheal);
             }
         }
     }
@@ -148,6 +167,8 @@ public class PlayerStats : MonoBehaviour
     public void Heal(int amount)
     {
         if (amount <= 0 || !IsAlive) return;
+
+        int prevOverheal = LightOverheal;
 
         int missing = maxHealth - CurrentHealth;
         int toHealth = Mathf.Min(amount, missing);
@@ -158,6 +179,8 @@ public class PlayerStats : MonoBehaviour
             LightOverheal = Mathf.Min(maxOverheal, LightOverheal + overflow);
 
         OnStatsChanged?.Invoke();
+        if (LightOverheal != prevOverheal)
+            OnOverhealChanged?.Invoke(LightOverheal, maxOverheal);
     }
 
     public void TakeDamage(int amount)
@@ -177,6 +200,8 @@ public class PlayerStats : MonoBehaviour
         CombatTelemetry.PlayerHit(amount, absorbed, healthLoss, CurrentHealth, maxHealth, LightOverheal);
 
         OnStatsChanged?.Invoke();
+        if (absorbed > 0)
+            OnOverhealChanged?.Invoke(LightOverheal, maxOverheal);
 
         if (CurrentHealth <= 0) Die();
     }
@@ -198,11 +223,13 @@ public class PlayerStats : MonoBehaviour
         if (rb != null) rb.linearVelocity = Vector2.zero;
 
         CurrentHealth = maxHealth;
-        LightOverheal = 0;
+        // Respawn : l'Overheal repart plein, même règle qu'Awake (tampon qui verrouille la torche).
+        LightOverheal = maxOverheal;
         healthDrainAccumulator = 0f;
         deathFired = false;
 
         OnStatsChanged?.Invoke();
+        OnOverhealChanged?.Invoke(LightOverheal, maxOverheal);
         OnRespawn?.Invoke();
     }
 

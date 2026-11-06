@@ -8,8 +8,8 @@ using UnityEngine;
 public class LightOrb : MonoBehaviour
 {
     [Header("Reward")]
-    [Tooltip("Points de vie restaurés au joueur à la collecte.")]
-    [SerializeField] private int healAmount = 1;
+    [Tooltip("Quantité de lumière restaurée au joueur à la collecte. Arrondie au supérieur (Mathf.CeilToInt) au moment du Heal, donc 1.4 → 2 PV (buff +40 % vs ancienne valeur 1).")]
+    [SerializeField] private float healAmount = 1.4f;
 
     [Tooltip("Points de score ajoutés au ScoreManager à la collecte.")]
     [SerializeField] private int scoreValue = 10;
@@ -36,7 +36,7 @@ public class LightOrb : MonoBehaviour
         if (hp == null) hp = other.GetComponentInParent<PlayerStats>();
         if (hp == null) return;
 
-        hp.Heal(healAmount);;
+        hp.Heal(Mathf.CeilToInt(healAmount));
         if (ScoreManager.Instance != null) ScoreManager.Instance.AddLight(scoreValue);
         Destroy(gameObject);
     }

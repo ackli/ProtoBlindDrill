@@ -194,6 +194,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 029ead84afaf456da6d886b80081d5c9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LightOrb
-  healAmount: 1
+  healAmount: 1.4
   scoreValue: 10
   spinSpeed: 60
