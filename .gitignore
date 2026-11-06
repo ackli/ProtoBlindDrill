@@ -77,3 +77,19 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Graphify + Claude Code configuration
+/.claude/CLAUDE.md
+/.claude/settings.json
+/.claude/skills/graphify/.graphify_version
+/.claude/skills/graphify/references/add-watch.md
+/.claude/skills/graphify/references/exports.md
+/.claude/skills/graphify/references/extraction-spec.md
+/.claude/skills/graphify/references/github-and-merge.md
+/.claude/skills/graphify/references/hooks.md
+/.claude/skills/graphify/references/query.md
+/.claude/skills/graphify/references/transcribe.md
+/.claude/skills/graphify/references/update.md
+/.claude/skills/graphify/SKILL.md
+/.claude/skills/graphify/SKILL.md.bak
+/CLAUDE.md
