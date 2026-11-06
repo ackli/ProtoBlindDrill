@@ -9,7 +9,7 @@ using UnityEngine.Tilemaps;
 [CreateAssetMenu(menuName = "BlindDrill/DestructibleTile", fileName = "NewDestructibleTile")]
 public class DestructibleTile : Tile
 {
-    public enum MaterialType { Dirt, Stone, Bedrock }
+    public enum MaterialType { Dirt, Stone, Bedrock, LightCrystal }
 
     [Header("Material")]
     public MaterialType material = MaterialType.Dirt;

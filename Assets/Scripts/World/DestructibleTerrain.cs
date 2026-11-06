@@ -30,9 +30,17 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Parent des Blockers 3D. Auto-créé (enfant 'Blockers') si vide.")]
     [SerializeField] private Transform blockersParent;
 
+    [Header("Light Crystal")]
+    [Tooltip("Prefab instancié sur chaque cellule de bloc LightCrystal lors de la génération. Doit porter un Light2D (Point) pour que le bloc soit visible dans le noir.")]
+    [SerializeField] private GameObject lightCrystalPrefab;
+
+    [Tooltip("Parent des Light2D de cristaux. Auto-créé (enfant 'CrystalLights') si vide.")]
+    [SerializeField] private Transform crystalLightsParent;
+
     private Tilemap tilemap;
     private readonly Dictionary<Vector3Int, int> cellHP = new Dictionary<Vector3Int, int>();
     private readonly Dictionary<Vector3Int, GameObject> blockers = new Dictionary<Vector3Int, GameObject>();
+    private readonly Dictionary<Vector3Int, GameObject> crystalLights = new Dictionary<Vector3Int, GameObject>();
 
     private void Awake()
     {
@@ -61,6 +69,7 @@ public class DestructibleTerrain : MonoBehaviour
             tilemap.SetTile(cell, null);
             cellHP.Remove(cell);
             DestroyBlocker(cell);
+            DestroyCrystalLight(cell);
             TrySpawnOrb(cell, destructible);
             return MineResult.Destroyed;
         }
@@ -170,10 +179,74 @@ public class DestructibleTerrain : MonoBehaviour
     private void TrySpawnOrb(Vector3Int cell, DestructibleTile tile)
     {
         if (lightOrbPrefab == null) return;
-        if (tile.material != DestructibleTile.MaterialType.Dirt) return;
-        if (Random.value > orbSpawnChance) return;
-
+        // La terre ordinaire ne drop plus rien ; seuls les blocs LightCrystal donnent la lumière.
+        if (tile.material != DestructibleTile.MaterialType.LightCrystal) return;
+        // Crystal = source de lumière garantie : pas de tirage probabiliste ici.
         Vector3 pos = tilemap.GetCellCenterWorld(cell);
         Instantiate(lightOrbPrefab, pos, Quaternion.identity);
+    }
+
+    /// <summary>Instancie le prefab de lumière sur une cellule, si pas déjà présent. Appelé par TerrainGenerator après le pose-tile d'un bloc LightCrystal.</summary>
+    public GameObject SpawnCrystalLight(Vector3Int cell)
+    {
+        if (lightCrystalPrefab == null) return null;
+        if (tilemap == null) tilemap = GetComponent<Tilemap>();
+        if (crystalLights.TryGetValue(cell, out var existing) && existing != null) return existing;
+
+        EnsureCrystalLightsParent();
+        Vector3 pos = tilemap.GetCellCenterWorld(cell);
+        var go = Instantiate(lightCrystalPrefab, pos, Quaternion.identity, crystalLightsParent);
+        crystalLights[cell] = go;
+        return go;
+    }
+
+    /// <summary>Détruit la Light2D associée à la cellule (si elle existe). O(1).</summary>
+    public bool DestroyCrystalLight(Vector3Int cell)
+    {
+        if (!crystalLights.TryGetValue(cell, out var go)) return false;
+        if (go != null)
+        {
+            if (Application.isPlaying) Destroy(go);
+            else DestroyImmediate(go);
+        }
+        crystalLights.Remove(cell);
+        return true;
+    }
+
+    /// <summary>Détruit toutes les Light2D de cristaux. Appelé avant une régénération complète.</summary>
+    public void ClearCrystalLights()
+    {
+        foreach (var kv in crystalLights)
+        {
+            if (kv.Value == null) continue;
+            if (Application.isPlaying) Destroy(kv.Value);
+            else DestroyImmediate(kv.Value);
+        }
+        crystalLights.Clear();
+
+        if (crystalLightsParent != null)
+        {
+            for (int i = crystalLightsParent.childCount - 1; i >= 0; i--)
+            {
+                var child = crystalLightsParent.GetChild(i).gameObject;
+                if (Application.isPlaying) Destroy(child);
+                else DestroyImmediate(child);
+            }
+        }
+    }
+
+    private void EnsureCrystalLightsParent()
+    {
+        if (crystalLightsParent == null)
+        {
+            var existing = transform.Find("CrystalLights");
+            if (existing != null) crystalLightsParent = existing;
+            else
+            {
+                var go = new GameObject("CrystalLights");
+                go.transform.SetParent(transform, worldPositionStays: false);
+                crystalLightsParent = go.transform;
+            }
+        }
     }
 }

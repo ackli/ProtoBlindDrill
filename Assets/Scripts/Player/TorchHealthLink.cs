@@ -14,10 +14,10 @@ public class TorchHealthLink : MonoBehaviour
     [SerializeField] private Light2D torch;
 
     [Tooltip("Rayon à 0 HP (jamais atteint, le joueur meurt avant). Utilisé pour l'extrémité basse du lerp.")]
-    [SerializeField] private float minOuterRadius = 1.5f;
+    [SerializeField] private float minOuterRadius = 2.25f;
 
     [Tooltip("Rayon à maxHealth. Au max de vie = pleine portée de vision.")]
-    [SerializeField] private float maxOuterRadius = 7f;
+    [SerializeField] private float maxOuterRadius = 10.5f;
 
     [Tooltip("Vitesse de transition du rayon (unités/s).")]
     [SerializeField] private float transitionSpeed = 4f;

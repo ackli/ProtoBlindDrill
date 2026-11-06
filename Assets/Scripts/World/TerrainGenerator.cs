@@ -16,6 +16,16 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Tile incassable (optionnelle). Placée sur la rangée du bas et les colonnes gauche/droite.")]
     [SerializeField] private TileBase bedrockTile;
 
+    [Tooltip("Tile 'bloc de lumière'. DestructibleTile dont MaterialType = LightCrystal. Placée aléatoirement à la place de dirtTile et dropera un LightOrb à destruction.")]
+    [SerializeField] private TileBase lightCrystalTile;
+
+    [Range(0f, 1f)]
+    [Tooltip("Probabilité qu'un bloc de terre (dirt) soit remplacé par un bloc de lumière lors de la génération. Recommandé : 0.05 à 0.10.")]
+    [SerializeField] private float crystalSpawnChance = 0.07f;
+
+    [Tooltip("Seed indépendante du tirage de remplacement par les blocs de lumière, pour une génération reproductible.")]
+    [SerializeField] private int crystalSeed = 7777;
+
     [Header("Zone")]
     [Tooltip("Coin inférieur gauche (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-40, -92);
@@ -216,10 +226,18 @@ public class TerrainGenerator : MonoBehaviour
         if (destructible == null) return;
 
         destructible.ClearBlockers();
+        destructible.ClearCrystalLights();
+
         for (int k = 0; k < positions.Length; k++)
         {
-            if (tiles[k] != null)
-                destructible.SpawnBlocker(positions[k]);
+            if (tiles[k] == null) continue;
+
+            destructible.SpawnBlocker(positions[k]);
+
+            // Allumer une Light2D si la cellule reçoit un bloc de lumière.
+            var dt = tiles[k] as DestructibleTile;
+            if (dt != null && dt.material == DestructibleTile.MaterialType.LightCrystal)
+                destructible.SpawnCrystalLight(positions[k]);
         }
     }
 
@@ -264,7 +282,16 @@ public class TerrainGenerator : MonoBehaviour
             if (n > stoneThreshold) return stoneTile;
         }
 
-        // 6. Dirt par défaut (le LightOrb-spawn-chance côté DestructibleTerrain reste inchangé).
+        // 6. Dirt par défaut. Tirage indépendant : une fraction crystalSpawnChance des dirts
+        //    devient un bloc de lumière (LightCrystal) — remplacement 1:1, préserve la densité
+        //    de collisions / navmesh ; la Light2D est instanciée par DestructibleTerrain.SpawnCrystalLight.
+        if (lightCrystalTile != null && crystalSpawnChance > 0f)
+        {
+            // Hash déterministe par cellule via Perlin pour que la répartition ne bouge pas entre runs
+            // (même seed = mêmes crystals). Évite aussi les grappes trop fortes sur un simple Random.value.
+            float r = Mathf.PerlinNoise((x + crystalSeed) * 0.9f, (y + crystalSeed) * 0.9f);
+            if (r > 1f - crystalSpawnChance) return lightCrystalTile;
+        }
         return dirtTile;
     }
 
