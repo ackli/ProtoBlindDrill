@@ -49,6 +49,12 @@ public class ArenaRoom : MonoBehaviour
         box.size = size;
         box.offset = Vector2.zero;
         box.isTrigger = true;
+
+        // Les arènes sont créées dynamiquement par TerrainGenerator.SpawnArenaRooms(), appelé
+        // juste avant MarkInitialGenerationComplete() dans la même frame. On enregistre ici
+        // (et pas en Start) pour garantir l'incrément AVANT l'évaluation de victoire initiale.
+        if (LevelObjectiveManager.Instance != null)
+            LevelObjectiveManager.Instance.RegisterArena();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -58,6 +64,9 @@ public class ArenaRoom : MonoBehaviour
 
         hasTriggered = true;
         Spawn();
+
+        if (LevelObjectiveManager.Instance != null)
+            LevelObjectiveManager.Instance.MarkArenaTriggered();
     }
 
     private void Spawn()

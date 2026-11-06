@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -18,11 +19,13 @@ public class LevelObjectiveManager : MonoBehaviour
     public static event Action OnLevelCleared;
 
     private int totalEnemiesRemaining;
+    private int untriggeredArenas = 0;
     private bool hasEverRegistered;
     private bool initialGenerationComplete;
     private bool victoryFired;
 
     public int TotalEnemiesRemaining => totalEnemiesRemaining;
+    public int UntriggeredArenas => untriggeredArenas;
     public bool InitialGenerationComplete => initialGenerationComplete;
 
     private void Awake()
@@ -61,15 +64,40 @@ public class LevelObjectiveManager : MonoBehaviour
         TryTriggerVictory();
     }
 
+    /// <summary>Appelé par chaque <see cref="ArenaRoom"/> à son initialisation (Configure).</summary>
+    public void RegisterArena()
+    {
+        untriggeredArenas++;
+    }
+
+    /// <summary>Appelé par une <see cref="ArenaRoom"/> dès qu'elle a été déclenchée (mobs spawnés).</summary>
+    public void MarkArenaTriggered()
+    {
+        untriggeredArenas = Mathf.Max(0, untriggeredArenas - 1);
+        // Les mobs tout juste instanciés s'enregistrent via MobBase.Start — donc à la frame
+        // suivante. Évaluer la victoire tout de suite ouvrirait une race condition : le
+        // compteur d'ennemis vaut encore 0 alors que des mobs vont s'ajouter. On diffère.
+        StartCoroutine(DeferredVictoryCheck());
+    }
+
+    private IEnumerator DeferredVictoryCheck()
+    {
+        // Attendre la fin de frame laisse tourner les Start() des mobs fraîchement instanciés,
+        // qui appellent RegisterEnemy() et remontent totalEnemiesRemaining avant l'évaluation.
+        yield return new WaitForEndOfFrame();
+        TryTriggerVictory();
+    }
+
     private void TryTriggerVictory()
     {
         if (victoryFired) return;
         if (!initialGenerationComplete) return;
         if (!hasEverRegistered) return;
         if (totalEnemiesRemaining > 0) return;
+        if (untriggeredArenas > 0) return;
 
         victoryFired = true;
-        Debug.Log("[LEVEL] Victoire ! Tous les ennemis ont été purgés.");
+        Debug.Log("[LEVEL] Victoire ! Tous les ennemis ont été purgés dans toutes les arènes.");
         OnLevelCleared?.Invoke();
     }
 
