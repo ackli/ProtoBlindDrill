@@ -112,6 +112,28 @@ public class TerrainGenerator : MonoBehaviour
     private readonly List<(RectInt rect, ArenaRoom.RoomTier tier)> arenaRects =
         new List<(RectInt, ArenaRoom.RoomTier)>();
 
+    /// <summary>Coin inférieur gauche (cellules, inclus) de la zone générée.</summary>
+    public Vector2Int BottomLeftCell => bottomLeft;
+
+    /// <summary>Coin supérieur droit (cellules, inclus) de la zone générée.</summary>
+    public Vector2Int TopRightCell => topRight;
+
+    /// <summary>
+    /// Bounds monde de la zone de terrain générée. Utilise la Tilemap pour convertir
+    /// les cellules en coordonnées monde (bords xMax/yMax passés à <c>+1</c> car
+    /// <see cref="topRight"/> est inclusif). Ne dépend pas des tuiles posées, seulement
+    /// de la taille de cellule du Grid.
+    /// </summary>
+    public Bounds GetWorldBounds()
+    {
+        if (tilemap == null) tilemap = GetComponent<Tilemap>();
+        Vector3 min = tilemap.CellToWorld(new Vector3Int(bottomLeft.x, bottomLeft.y, 0));
+        Vector3 max = tilemap.CellToWorld(new Vector3Int(topRight.x + 1, topRight.y + 1, 0));
+        Vector3 size = max - min;
+        Vector3 center = (min + max) * 0.5f;
+        return new Bounds(center, size);
+    }
+
     private void Awake()
     {
         tilemap = GetComponent<Tilemap>();

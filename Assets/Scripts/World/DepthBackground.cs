@@ -42,9 +42,29 @@ public class DepthBackground : MonoBehaviour
     [Tooltip("Sorting order de la 1re bande. Les bandes suivantes descendent de 1.")]
     [SerializeField] private int baseSortingOrder = -100;
 
+    [Header("Auto-Fit au Terrain (runtime)")]
+    [Tooltip("Si assigné : au Start, lit les bornes du TerrainGenerator pour ajuster la largeur et étirer les bandes Y afin de couvrir toute la grille. Laisse vide pour conserver les valeurs manuelles.")]
+    [SerializeField] private TerrainGenerator fitToTerrain;
+
+    [Tooltip("Marge horizontale ajoutée de chaque côté (unités monde). Compense les sprites non débordants.")]
+    [SerializeField] private float horizontalMargin = 0f;
+
+    [Tooltip("Marge verticale ajoutée en haut et en bas (unités monde).")]
+    [SerializeField] private float verticalMargin = 0f;
+
+    [Tooltip("Y 'de surface' dans les valeurs authored. Les bandes dont yBottom >= cette valeur (ex: le Ciel) gardent leur taille et sont posées au-dessus du bord supérieur du terrain. Les bandes en dessous sont étirées pour couvrir la profondeur générée.")]
+    [SerializeField] private float authoredSurfaceY = 0f;
+
     private void Awake()
     {
         Apply();
+    }
+
+    private void Start()
+    {
+        // Après Awake de TerrainGenerator → le tilemap/grid est prêt. En Play uniquement
+        // pour ne pas écraser les bandes authored en Edit mode.
+        if (Application.isPlaying && fitToTerrain != null) FitToTerrain();
     }
 
 #if UNITY_EDITOR
@@ -68,6 +88,65 @@ public class DepthBackground : MonoBehaviour
             if (Application.isPlaying) Destroy(child);
             else DestroyImmediate(child);
         }
+        Apply();
+    }
+
+    /// <summary>
+    /// Ajuste la largeur, centre horizontalement et repositionne les bandes pour couvrir
+    /// la grille du <see cref="fitToTerrain"/>. Les bandes au-dessus de <see cref="authoredSurfaceY"/>
+    /// (ex: le Ciel) sont translatées au-dessus du bord supérieur du terrain sans étirement.
+    /// Les bandes sous la surface sont remappées proportionnellement entre leur bande la plus
+    /// profonde authored et <paramref name="authoredSurfaceY"/>, vers [terrain yMin, terrain yMax].
+    /// </summary>
+    [ContextMenu("Fit To Terrain")]
+    public void FitToTerrain()
+    {
+        if (fitToTerrain == null || bands == null || bands.Length == 0) return;
+
+        Bounds b = fitToTerrain.GetWorldBounds();
+
+        // 1. Largeur = largeur monde de la grille (+ marge).
+        width = b.size.x + horizontalMargin * 2f;
+
+        // 2. Centrage horizontal (un offset arbitraire de l'origine ne doit pas désaxer le fond).
+        Vector3 pos = transform.position;
+        pos.x = b.center.x;
+        transform.position = pos;
+
+        // 3. Ligne de surface monde = STRICTEMENT le haut du terrain (pas de marge ici :
+        //    sinon le haut de la bande Dirt remonte au-dessus des tuiles réelles et on voit
+        //    du brun au-dessus du terrain). La verticalMargin ne sert qu'à prolonger la
+        //    bande la plus profonde sous le sol du terrain.
+        float worldSurfaceY = b.max.y;
+        float worldBottomY = b.min.y - verticalMargin;
+
+        // Bornes authored sous-surface : de la bande la plus profonde jusqu'à la surface.
+        float authoredBottom = float.PositiveInfinity;
+        for (int i = 0; i < bands.Length; i++)
+            if (bands[i].yBottom < authoredBottom) authoredBottom = bands[i].yBottom;
+        float authoredSpan = authoredSurfaceY - authoredBottom;
+
+        for (int i = 0; i < bands.Length; i++)
+        {
+            bool aboveSurface = bands[i].yBottom >= authoredSurfaceY - 0.0001f;
+
+            if (aboveSurface)
+            {
+                // Translation sans étirement : yBottom = worldSurfaceY, yTop conserve la hauteur authored.
+                float height = bands[i].yTop - bands[i].yBottom;
+                bands[i].yBottom = worldSurfaceY + (bands[i].yBottom - authoredSurfaceY);
+                bands[i].yTop = bands[i].yBottom + height;
+            }
+            else if (authoredSpan > 0.0001f)
+            {
+                // Remap proportionnel [authoredBottom, authoredSurfaceY] → [worldBottomY, worldSurfaceY].
+                float topT = (bands[i].yTop - authoredBottom) / authoredSpan;
+                float botT = (bands[i].yBottom - authoredBottom) / authoredSpan;
+                bands[i].yTop = Mathf.Lerp(worldBottomY, worldSurfaceY, topT);
+                bands[i].yBottom = Mathf.Lerp(worldBottomY, worldSurfaceY, botT);
+            }
+        }
+
         Apply();
     }
 
