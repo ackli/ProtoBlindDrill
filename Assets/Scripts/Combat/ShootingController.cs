@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody2D))]
-public class ShootingController : MonoBehaviour
+public class ShootingController : MonoBehaviour, IWeapon
 {
     [Header("Projectile")]
     [Tooltip("Prefab DebrisProjectile instancié à chaque tir.")]
@@ -15,8 +15,8 @@ public class ShootingController : MonoBehaviour
     [SerializeField] private float muzzleOffset = 0.6f;
 
     [Header("Fire Rate")]
-    [Tooltip("Délai minimum entre deux tirs (s).")]
-    [SerializeField] private float fireCooldown = 0.18f;
+    [Tooltip("Délai minimum entre deux tirs (s). Avec 'Fire Mode = Hold', c'est la cadence du tir continu tant que le bouton est maintenu.")]
+    [SerializeField] private float fireCooldown = 0.35f;
 
     [Header("Knockback")]
     [Tooltip("Impulsion appliquée au joueur dans la direction opposée au tir.")]
@@ -55,6 +55,15 @@ public class ShootingController : MonoBehaviour
         stats = GetComponent<PlayerStats>();
         if (targetCamera == null) targetCamera = Camera.main;
 
+        // Partage le prefab de projectile aux armes ajoutées en runtime (Shotgun, Flamethrower).
+        if (projectilePrefab != null) DebrisProjectile.DefaultPrefab = projectilePrefab;
+
+        if (inputActions == null)
+        {
+            // Fallback runtime : l'AddComponent via Pickup n'a pas la ref serialized → on la pique à PlayerMovement2D.
+            var movement = GetComponent<PlayerMovement2D>();
+            if (movement != null) inputActions = movement.InputActions;
+        }
         if (inputActions == null)
         {
             Debug.LogError("[ShootingController] InputActionAsset non assigné.", this);
@@ -72,21 +81,28 @@ public class ShootingController : MonoBehaviour
         if (shootAction == null || aimAction == null) return;
         shootAction.Enable();
         aimAction.Enable();
-        shootAction.performed += OnShootPerformed;
     }
 
     private void OnDisable()
     {
         if (shootAction == null || aimAction == null) return;
-        shootAction.performed -= OnShootPerformed;
         shootAction.Disable();
         aimAction.Disable();
     }
 
-    private void OnShootPerformed(InputAction.CallbackContext _)
+    private void Update()
+    {
+        // Tir continu : tant que la touche est maintenue, on tire à la cadence fireCooldown.
+        // Timer strict : si on relâche puis réappuie plus tôt, le délai persiste — pas de burst infini.
+        if (shootAction == null || aimAction == null) return;
+        if (!shootAction.IsPressed()) return;
+        if (Time.time < nextFireTime) return;
+        Fire();
+    }
+
+    private void Fire()
     {
         if (projectilePrefab == null) return;
-        if (Time.time < nextFireTime) return;
 
         Vector2 aim = aimAction.ReadValue<Vector2>();
         Vector2 direction = ComputeFireDirection(aim);

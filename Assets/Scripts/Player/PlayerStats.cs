@@ -177,6 +177,10 @@ public class PlayerStats : MonoBehaviour
         while (true)
         {
             yield return wait;
+            // God Mode fige l'Overheal : on skip le tick de drain pour qu'il ne descende pas.
+            // La coroutine continue (yield suivant), donc dès que GodMode est coupé, le drain reprend
+            // à la cadence normale sans "rattrapage" des ticks manqués.
+            if (GodMode) continue;
             if (LightOverheal > 0)
             {
                 LightOverheal--;

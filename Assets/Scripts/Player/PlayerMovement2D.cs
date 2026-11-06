@@ -82,6 +82,16 @@ public class PlayerMovement2D : MonoBehaviour
 
     private float moveInputX;
     private bool jumpHeld;
+
+    /// <summary>Flag contrôlable par un IMovementGear (ex: JetpackGear) pour couper le wall-jump
+    /// natif. True par défaut (comportement actuel inchangé).</summary>
+    public bool WallJumpEnabled { get; set; } = true;
+
+    /// <summary>État "touche Jump maintenue" exposé pour les gears (JetpackGear l'utilise pour la poussée).</summary>
+    public bool JumpHeld => jumpHeld;
+
+    /// <summary>InputActionAsset partagé — utilisé par les armes ajoutées en runtime (AddComponent) pour éviter d'avoir à le resérialiser.</summary>
+    public InputActionAsset InputActions => inputActions;
     private float lastGroundedTime = -999f;
     private float lastJumpPressedTime = -999f;
     private bool isGrounded;
@@ -208,7 +218,8 @@ public class PlayerMovement2D : MonoBehaviour
         //    → Mur à droite  (+1) : il faut tenir D (moveInputX > 0)
         //    → Mur à gauche (-1) : il faut tenir Q (moveInputX < 0)
         //    La propulsion part quand même du côté opposé au mur ("Mario style").
-        if (withinBuffer && !isGrounded)
+        //    Désactivé si WallJumpEnabled = false (ex: JetpackGear équipé).
+        if (withinBuffer && !isGrounded && WallJumpEnabled)
         {
             int wallDir = GetWallDirection();
             if (wallDir != 0)
@@ -276,6 +287,7 @@ public class PlayerMovement2D : MonoBehaviour
     /// </summary>
     private void ApplyWallSlide()
     {
+        if (!WallJumpEnabled) return;              // cohérence avec le wall-jump : si le gear l'a coupé, pas de slide non plus
         if (wallSlideFallSpeed <= 0f) return;
         if (isGrounded) return;
         if (rb.linearVelocity.y >= 0f) return;         // en montée : pas de slide

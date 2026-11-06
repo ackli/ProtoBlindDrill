@@ -4,6 +4,11 @@ using UnityEngine;
 [RequireComponent(typeof(CircleCollider2D))]
 public class DebrisProjectile : MonoBehaviour
 {
+    /// <summary>Prefab de référence partagé, set par le premier <see cref="ShootingController"/> au Awake.
+    /// Utilisé par les armes ajoutées en runtime via AddComponent (Shotgun, Flamethrower…) pour éviter
+    /// de resérialiser la ref sur chaque instance.</summary>
+    public static DebrisProjectile DefaultPrefab { get; set; }
+
     [Header("Damage")]
     [Tooltip("Dégâts infligés aux mobs touchés. Set par ShootingController au spawn, multiplié par PlayerStats.DamageMultiplier pour intégrer le buff Damage des reliques.")]
     [SerializeField] private int damage = 1;

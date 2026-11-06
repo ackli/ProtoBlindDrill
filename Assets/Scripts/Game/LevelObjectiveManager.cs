@@ -19,11 +19,67 @@ public class LevelObjectiveManager : MonoBehaviour
     /// <summary>Levé une seule fois quand tous les ennemis ont été purgés après init complète.</summary>
     public static event Action OnLevelCleared;
 
+    [Header("Arena Rewards")]
+    [Tooltip("Pool de récompenses (prefabs de PickupItem) tirée au hasard par ArenaRoom au clear.")]
+    [SerializeField] private PickupItem[] rewardPrefabs;
+
     private int totalEnemiesRemaining;
     private readonly List<ArenaRoom> untriggeredRooms = new List<ArenaRoom>();
     private bool hasEverRegistered;
     private bool initialGenerationComplete;
     private bool victoryFired;
+
+    /// <summary>
+    /// Tire un prefab de récompense au hasard, en excluant l'arme ET le gear actuellement équipés
+    /// par le joueur (le pickup est un doublon ⇒ frustrant). Si le filtrage vide totalement la pool
+    /// (cas pathologique où tout ce qui reste équivaut à ce que le joueur a déjà), fallback sur un
+    /// tirage brut dans la pool complète pour toujours droper quelque chose.
+    /// </summary>
+    public PickupItem GetRandomRewardPrefab()
+    {
+        if (rewardPrefabs == null || rewardPrefabs.Length == 0) return null;
+
+        // Résolution de l'équipement actif : on cherche l'EquipmentManager via le GO tagué "Player".
+        // On tolère son absence (early boot) — dans ce cas, pas de filtre.
+        string equippedWeapon = string.Empty;
+        string equippedGear = string.Empty;
+        var playerGO = GameObject.FindGameObjectWithTag("Player");
+        if (playerGO != null)
+        {
+            var eq = playerGO.GetComponent<EquipmentManager>();
+            if (eq == null) eq = playerGO.GetComponentInParent<EquipmentManager>();
+            if (eq != null)
+            {
+                equippedWeapon = eq.CurrentWeaponTypeName;
+                equippedGear = eq.CurrentGearTypeName;
+            }
+        }
+
+        // Construit la liste des choix valides : tout prefab dont le componentTypeName du PickupItem
+        // ne matche NI l'arme NI le gear actuellement équipé. Comparaison par nom simple, cohérente
+        // avec CurrentWeaponTypeName / CurrentGearTypeName (qui renvoient GetType().Name).
+        var pool = new List<PickupItem>(rewardPrefabs.Length);
+        for (int i = 0; i < rewardPrefabs.Length; i++)
+        {
+            var p = rewardPrefabs[i];
+            if (p == null) continue;
+            var t = p.ComponentTypeName;
+            if (!string.IsNullOrEmpty(t) &&
+                (t == equippedWeapon || t == equippedGear))
+                continue; // doublon de l'équipement actif → exclu
+            pool.Add(p);
+        }
+
+        // Fallback de sécurité : si le filtrage a tout éliminé (configuration dégénérée), on tire
+        // dans la pool complète pour au moins droper un objet (quitte à être un doublon).
+        if (pool.Count == 0)
+        {
+            Debug.LogWarning("[LEVEL] Toutes les récompenses matchent l'équipement actif → fallback tirage brut.");
+            return rewardPrefabs[UnityEngine.Random.Range(0, rewardPrefabs.Length)];
+        }
+
+        return pool[UnityEngine.Random.Range(0, pool.Count)];
+    }
 
     public int TotalEnemiesRemaining => totalEnemiesRemaining;
     public int UntriggeredArenas => untriggeredRooms.Count;

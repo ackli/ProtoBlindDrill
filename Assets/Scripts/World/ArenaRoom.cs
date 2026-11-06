@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -6,6 +7,7 @@ using UnityEngine.AI;
 /// de mobs correspondant au <see cref="RoomTier"/>. Projette automatiquement les positions 2D
 /// (centre + offset aléatoire) vers le plan NavMesh 3D (Y = navMeshY) pour respecter l'archi
 /// Dual-Plane. Les mobs spawnés s'enregistrent via MobBase.Start → LevelObjectiveManager.
+/// Quand tous les mobs de CETTE salle sont morts, drope une récompense PickupItem au centre-bas.
 /// </summary>
 [RequireComponent(typeof(BoxCollider2D))]
 public class ArenaRoom : MonoBehaviour
@@ -27,7 +29,13 @@ public class ArenaRoom : MonoBehaviour
     [Tooltip("Rayon d'offset aléatoire (unités 2D) autour du centre de la salle. Évite l'empilage des mobs.")]
     [SerializeField] private float spawnSpreadRadius = 2.5f;
 
+    [Header("Reward")]
+    [Tooltip("Décalage vertical (unités) au-dessus du sol de la salle pour poser la récompense (évite de clipper dans le sol).")]
+    [SerializeField] private float rewardBottomOffset = 1.0f;
+
     private bool hasTriggered;
+    private bool rewardDropped;
+    private readonly List<MobBase> spawnedMobs = new List<MobBase>();
 
     private void Awake()
     {
@@ -101,6 +109,49 @@ public class ArenaRoom : MonoBehaviour
         else
             spawnPos = new Vector3(c.x, navMeshY, c.y); // fallback : centre strict de la salle
 
-        Instantiate(prefab, spawnPos, Quaternion.identity);
+        var mob = Instantiate(prefab, spawnPos, Quaternion.identity);
+        if (mob != null) spawnedMobs.Add(mob);
+    }
+
+    private void Update()
+    {
+        // Attend que l'arène ait été déclenchée ET que des mobs aient été spawnés ; sinon on saute.
+        if (!hasTriggered || rewardDropped || spawnedMobs.Count == 0) return;
+
+        // Les mobs détruits deviennent null côté Unity. Dès que la liste est vide → clear.
+        bool stillAlive = false;
+        for (int i = 0; i < spawnedMobs.Count; i++)
+            if (spawnedMobs[i] != null) { stillAlive = true; break; }
+
+        if (!stillAlive)
+        {
+            rewardDropped = true;
+            spawnedMobs.Clear();
+            DropReward();
+        }
+    }
+
+    private void DropReward()
+    {
+        if (LevelObjectiveManager.Instance == null)
+        {
+            Debug.LogWarning("[ARENA] Pas de LevelObjectiveManager → pas de récompense dropée.", this);
+            return;
+        }
+        var prefab = LevelObjectiveManager.Instance.GetRandomRewardPrefab();
+        if (prefab == null)
+        {
+            Debug.Log("[ARENA] Clear mais aucun prefab de récompense configuré (LevelObjectiveManager.rewardPrefabs vide).", this);
+            return;
+        }
+
+        // center.x, bottom.y + offset — le BoxCollider2D de l'arène porte la taille de la salle.
+        var box = GetComponent<BoxCollider2D>();
+        Vector3 c = transform.position;
+        float halfH = box != null ? box.size.y * 0.5f : 0f;
+        Vector3 spawnPos = new Vector3(c.x, c.y - halfH + rewardBottomOffset, 0f);
+
+        var reward = Instantiate(prefab, spawnPos, Quaternion.identity);
+        Debug.Log($"[ARENA] {tier} clear → récompense '{reward.DisplayName}' ({reward.Kind}) dropée à ({spawnPos.x:F1},{spawnPos.y:F1}).", this);
     }
 }
