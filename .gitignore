@@ -96,3 +96,5 @@ crashlytics-build.properties
 
 # Graphify cache
 /graphify-out/cache/stat-index.json
+/graphify-out/cache/
+/graphify-out/.rebuild.lock
