@@ -98,3 +98,8 @@ crashlytics-build.properties
 /graphify-out/cache/stat-index.json
 /graphify-out/cache/
 /graphify-out/.rebuild.lock
+
+# Graphify local data
+/graphify-out/
+/.claude/
+/CLAUDE.md
