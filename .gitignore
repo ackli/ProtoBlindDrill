@@ -93,3 +93,6 @@ crashlytics-build.properties
 /.claude/skills/graphify/SKILL.md
 /.claude/skills/graphify/SKILL.md.bak
 /CLAUDE.md
+
+# Graphify cache
+/graphify-out/cache/stat-index.json
