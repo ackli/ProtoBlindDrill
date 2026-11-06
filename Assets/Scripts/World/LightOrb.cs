@@ -36,8 +36,25 @@ public class LightOrb : MonoBehaviour
         if (hp == null) hp = other.GetComponentInParent<PlayerStats>();
         if (hp == null) return;
 
-        hp.Heal(Mathf.CeilToInt(healAmount));
+        // Snapshot avant/après pour logger l'apport RÉEL : la valeur de heal se répartit
+        // entre CurrentHealth (prioritaire) et LightOverheal (débordement, capé à maxOverheal).
+        int prevHP = hp.CurrentHealth;
+        int prevOverheal = hp.LightOverheal;
+        int healAsked = Mathf.CeilToInt(healAmount);
+
+        hp.Heal(healAsked);
+
+        int gainedHP = hp.CurrentHealth - prevHP;
+        int gainedOverheal = hp.LightOverheal - prevOverheal;
+        int wastedHeal = healAsked - gainedHP - gainedOverheal; // overheal capé → une partie peut être perdue
+
         if (ScoreManager.Instance != null) ScoreManager.Instance.AddLight(scoreValue);
+
+        Debug.Log($"[LIGHT-ORB] Collected at ({transform.position.x:F1},{transform.position.y:F1}) | " +
+                  $"heal demandé: {healAsked} → +{gainedHP} HP, +{gainedOverheal} Overheal" +
+                  (wastedHeal > 0 ? $" (perdu: {wastedHeal} car overheal plein)" : "") +
+                  $" | état: {hp.CurrentHealth}/{hp.MaxHealth} HP, {hp.LightOverheal}/{hp.MaxOverheal} Overheal | +{scoreValue} score.");
+
         Destroy(gameObject);
     }
 }

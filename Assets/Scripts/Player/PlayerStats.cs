@@ -63,6 +63,13 @@ public class PlayerStats : MonoBehaviour
     /// <summary>Levé juste après le reset complet dans Respawn().</summary>
     public event Action OnRespawn;
 
+    /// <summary>
+    /// Levé quand la santé tombe à 0 : plus de respawn automatique. Le joueur est figé
+    /// (contrôles et physique désactivés) et l'UI Game Over peut s'y abonner pour afficher
+    /// son panneau de recommencement.
+    /// </summary>
+    public event Action OnGameOver;
+
     private Rigidbody2D rb;
     private Vector3 spawnPoint;
     private Coroutine overhealDrainCoroutine;
@@ -213,7 +220,28 @@ public class PlayerStats : MonoBehaviour
         OnStatsChanged?.Invoke();
         OnDeath?.Invoke();
         Debug.Log("Game Over");
-        Respawn();
+        FreezePlayer();
+        OnGameOver?.Invoke();
+    }
+
+    /// <summary>
+    /// Fige le joueur à la mort : coupe les scripts d'input/action et stoppe la simulation
+    /// du Rigidbody2D. La scène reste active (UI Game Over cliquable) ; le reset complet
+    /// vient de SceneManager.LoadScene côté GameOverUI.
+    /// </summary>
+    private void FreezePlayer()
+    {
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector2.zero;
+            rb.simulated = false;
+        }
+
+        // Désactive les contrôleurs présents sur le joueur (null-safe : si l'un n'existe pas, on ignore).
+        var movement = GetComponent<PlayerMovement2D>(); if (movement != null) movement.enabled = false;
+        var mining = GetComponent<MiningController>(); if (mining != null) mining.enabled = false;
+        var shooting = GetComponent<ShootingController>(); if (shooting != null) shooting.enabled = false;
+        var drill = GetComponent<DrillController>(); if (drill != null) drill.enabled = false;
     }
 
     /// <summary>Téléporte au spawn point et reset complet stats + accumulators + vélocité.</summary>

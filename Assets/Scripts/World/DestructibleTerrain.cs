@@ -37,10 +37,21 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Parent des Light2D de cristaux. Auto-créé (enfant 'CrystalLights') si vide.")]
     [SerializeField] private Transform crystalLightsParent;
 
+    [Header("Upgrade Relic")]
+    [Tooltip("Prefab instancié sur chaque cellule de bloc UpgradeRelic. Doit porter un SpriteRenderer (sprite 'révélé') + un RelicVisibility qui le masque hors Line-of-Sight. La tile de la Tilemap fournit le camouflage 'terre'.")]
+    [SerializeField] private GameObject relicPrefab;
+
+    [Tooltip("Parent des instances de reliques. Auto-créé (enfant 'Relics') si vide.")]
+    [SerializeField] private Transform relicsParent;
+
+    [Tooltip("Nombre de LightOrbs spawnés à la destruction d'une relique. La récompense justifie l'apparition rare du bloc.")]
+    [SerializeField] private int relicOrbReward = 3;
+
     private Tilemap tilemap;
     private readonly Dictionary<Vector3Int, int> cellHP = new Dictionary<Vector3Int, int>();
     private readonly Dictionary<Vector3Int, GameObject> blockers = new Dictionary<Vector3Int, GameObject>();
     private readonly Dictionary<Vector3Int, GameObject> crystalLights = new Dictionary<Vector3Int, GameObject>();
+    private readonly Dictionary<Vector3Int, GameObject> relics = new Dictionary<Vector3Int, GameObject>();
 
     private void Awake()
     {
@@ -70,6 +81,7 @@ public class DestructibleTerrain : MonoBehaviour
             cellHP.Remove(cell);
             DestroyBlocker(cell);
             DestroyCrystalLight(cell);
+            DestroyRelic(cell);
             TrySpawnOrb(cell, destructible);
             return MineResult.Destroyed;
         }
@@ -179,11 +191,24 @@ public class DestructibleTerrain : MonoBehaviour
     private void TrySpawnOrb(Vector3Int cell, DestructibleTile tile)
     {
         if (lightOrbPrefab == null) return;
+
+        Vector3 pos = tilemap.GetCellCenterWorld(cell);
+
+        // Relique : drop garanti, multiplié par relicOrbReward (récompense de la découverte LOS).
+        if (tile.material == DestructibleTile.MaterialType.UpgradeRelic)
+        {
+            int count = Mathf.Max(1, relicOrbReward);
+            for (int i = 0; i < count; i++)
+                Instantiate(lightOrbPrefab, pos, Quaternion.identity);
+            Debug.Log($"[RELIC-MINED] cell=({cell.x},{cell.y}) worldPos=({pos.x:F1},{pos.y:F1}) → {count} LightOrb(s) spawnés.");
+            return;
+        }
+
         // La terre ordinaire ne drop plus rien ; seuls les blocs LightCrystal donnent la lumière.
         if (tile.material != DestructibleTile.MaterialType.LightCrystal) return;
         // Crystal = source de lumière garantie : pas de tirage probabiliste ici.
-        Vector3 pos = tilemap.GetCellCenterWorld(cell);
         Instantiate(lightOrbPrefab, pos, Quaternion.identity);
+        Debug.Log($"[CRYSTAL-MINED] cell=({cell.x},{cell.y}) worldPos=({pos.x:F1},{pos.y:F1}) → 1 LightOrb spawné.");
     }
 
     /// <summary>Instancie le prefab de lumière sur une cellule, si pas déjà présent. Appelé par TerrainGenerator après le pose-tile d'un bloc LightCrystal.</summary>
@@ -246,6 +271,74 @@ public class DestructibleTerrain : MonoBehaviour
                 var go = new GameObject("CrystalLights");
                 go.transform.SetParent(transform, worldPositionStays: false);
                 crystalLightsParent = go.transform;
+            }
+        }
+    }
+
+    // =========================================================================
+    // Reliques camouflées (pattern miroir des Light Crystals)
+    // =========================================================================
+
+    /// <summary>Instancie le prefab de relique sur une cellule, si pas déjà présent. Appelé par TerrainGenerator après le pose-tile d'un bloc UpgradeRelic.</summary>
+    public GameObject SpawnRelic(Vector3Int cell)
+    {
+        if (relicPrefab == null) return null;
+        if (tilemap == null) tilemap = GetComponent<Tilemap>();
+        if (relics.TryGetValue(cell, out var existing) && existing != null) return existing;
+
+        EnsureRelicsParent();
+        Vector3 pos = tilemap.GetCellCenterWorld(cell);
+        var go = Instantiate(relicPrefab, pos, Quaternion.identity, relicsParent);
+        relics[cell] = go;
+        return go;
+    }
+
+    /// <summary>Détruit l'instance de relique associée à la cellule (si elle existe). O(1).</summary>
+    public bool DestroyRelic(Vector3Int cell)
+    {
+        if (!relics.TryGetValue(cell, out var go)) return false;
+        if (go != null)
+        {
+            if (Application.isPlaying) Destroy(go);
+            else DestroyImmediate(go);
+        }
+        relics.Remove(cell);
+        return true;
+    }
+
+    /// <summary>Détruit toutes les reliques. Appelé avant une régénération complète.</summary>
+    public void ClearRelics()
+    {
+        foreach (var kv in relics)
+        {
+            if (kv.Value == null) continue;
+            if (Application.isPlaying) Destroy(kv.Value);
+            else DestroyImmediate(kv.Value);
+        }
+        relics.Clear();
+
+        if (relicsParent != null)
+        {
+            for (int i = relicsParent.childCount - 1; i >= 0; i--)
+            {
+                var child = relicsParent.GetChild(i).gameObject;
+                if (Application.isPlaying) Destroy(child);
+                else DestroyImmediate(child);
+            }
+        }
+    }
+
+    private void EnsureRelicsParent()
+    {
+        if (relicsParent == null)
+        {
+            var existing = transform.Find("Relics");
+            if (existing != null) relicsParent = existing;
+            else
+            {
+                var go = new GameObject("Relics");
+                go.transform.SetParent(transform, worldPositionStays: false);
+                relicsParent = go.transform;
             }
         }
     }

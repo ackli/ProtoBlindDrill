@@ -26,6 +26,16 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Seed indépendante du tirage de remplacement par les blocs de lumière, pour une génération reproductible.")]
     [SerializeField] private int crystalSeed = 7777;
 
+    [Tooltip("Tile 'Relique' camouflée. DestructibleTile dont MaterialType = UpgradeRelic. Son sprite doit matcher le dirt pour que le camouflage Tilemap tienne — la révélation visuelle vient du prefab RelicVisibility instancié par-dessus.")]
+    [SerializeField] private TileBase relicTile;
+
+    [Range(0f, 0.2f)]
+    [Tooltip("Probabilité très faible de remplacement d'un dirt par une relique. 0.005 = 0.5 % — assez rare pour que la découverte LOS reste un évènement.")]
+    [SerializeField] private float relicSpawnChance = 0.005f;
+
+    [Tooltip("Seed indépendante du tirage de reliques.")]
+    [SerializeField] private int relicSeed = 31337;
+
     [Header("Zone")]
     [Tooltip("Coin inférieur gauche (cellules) de la zone à remplir, inclus.")]
     [SerializeField] private Vector2Int bottomLeft = new Vector2Int(-40, -92);
@@ -280,18 +290,33 @@ public class TerrainGenerator : MonoBehaviour
 
         destructible.ClearBlockers();
         destructible.ClearCrystalLights();
+        destructible.ClearRelics();
 
+        int relicCount = 0;
+        int crystalCount = 0;
         for (int k = 0; k < positions.Length; k++)
         {
             if (tiles[k] == null) continue;
 
             destructible.SpawnBlocker(positions[k]);
 
-            // Allumer une Light2D si la cellule reçoit un bloc de lumière.
+            // Allumer une Light2D si la cellule reçoit un bloc de lumière, ou instancier le
+            // prefab RelicVisibility si la cellule reçoit une relique camouflée.
             var dt = tiles[k] as DestructibleTile;
-            if (dt != null && dt.material == DestructibleTile.MaterialType.LightCrystal)
+            if (dt == null) continue;
+            if (dt.material == DestructibleTile.MaterialType.LightCrystal)
+            {
                 destructible.SpawnCrystalLight(positions[k]);
+                crystalCount++;
+            }
+            else if (dt.material == DestructibleTile.MaterialType.UpgradeRelic)
+            {
+                destructible.SpawnRelic(positions[k]);
+                Debug.Log($"[RELIC-SPAWN] cell=({positions[k].x},{positions[k].y}) worldPos=({tilemap.GetCellCenterWorld(positions[k]).x:F1},{tilemap.GetCellCenterWorld(positions[k]).y:F1})");
+                relicCount++;
+            }
         }
+        Debug.Log($"[TERRAIN-GEN] Génération terminée : {crystalCount} LightCrystal(s), {relicCount} Relic(s) placées.");
     }
 
     /// <summary>
@@ -335,9 +360,17 @@ public class TerrainGenerator : MonoBehaviour
             if (n > stoneThreshold) return stoneTile;
         }
 
-        // 6. Dirt par défaut. Tirage indépendant : une fraction crystalSpawnChance des dirts
-        //    devient un bloc de lumière (LightCrystal) — remplacement 1:1, préserve la densité
-        //    de collisions / navmesh ; la Light2D est instanciée par DestructibleTerrain.SpawnCrystalLight.
+        // 6. Dirt par défaut. Deux tirages indépendants s'enchaînent sur les cellules dirt :
+        //    6a. Relique camouflée (très rare, prioritaire sur le crystal pour qu'elle survive au tirage suivant).
+        //    6b. LightCrystal (fraction crystalSpawnChance, remplacement 1:1, préserve la densité).
+        // Le tirage relique passe par un hash déterministe (uniforme sur [0,1[), PAS par Perlin :
+        // Perlin est centré autour de 0.5 et sa queue > 0.9 est extrêmement fine, donc un seuil
+        // (1 - 0.05) réalisait en pratique bien moins que 5 % de densité réelle.
+        if (relicTile != null && relicSpawnChance > 0f)
+        {
+            float rr = Hash01(x, y, relicSeed);
+            if (rr < relicSpawnChance) return relicTile;
+        }
         if (lightCrystalTile != null && crystalSpawnChance > 0f)
         {
             // Hash déterministe par cellule via Perlin pour que la répartition ne bouge pas entre runs
@@ -346,6 +379,16 @@ public class TerrainGenerator : MonoBehaviour
             if (r > 1f - crystalSpawnChance) return lightCrystalTile;
         }
         return dirtTile;
+    }
+
+    /// <summary>Hash déterministe uniforme sur [0, 1[, indexé par (x, y, seed). Remplace Perlin
+    /// quand on veut un vrai taux de drop (Perlin a une distribution concentrée).</summary>
+    private static float Hash01(int x, int y, int seed)
+    {
+        // Variante de la formule "sin dot hash" classique en shader. Donne une répartition
+        // visuellement aléatoire, reproductible, sans allouer de System.Random par cellule.
+        float h = Mathf.Sin((x + seed) * 12.9898f + (y + seed) * 78.233f) * 43758.5453f;
+        return h - Mathf.Floor(h);
     }
 
     private bool TryGetArenaCell(int x, int y, out RectInt rect, out ArenaRoom.RoomTier tier)
