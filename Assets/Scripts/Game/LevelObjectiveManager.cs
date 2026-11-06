@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -19,13 +20,14 @@ public class LevelObjectiveManager : MonoBehaviour
     public static event Action OnLevelCleared;
 
     private int totalEnemiesRemaining;
-    private int untriggeredArenas = 0;
+    private readonly List<ArenaRoom> untriggeredRooms = new List<ArenaRoom>();
     private bool hasEverRegistered;
     private bool initialGenerationComplete;
     private bool victoryFired;
 
     public int TotalEnemiesRemaining => totalEnemiesRemaining;
-    public int UntriggeredArenas => untriggeredArenas;
+    public int UntriggeredArenas => untriggeredRooms.Count;
+    public IReadOnlyList<ArenaRoom> UntriggeredRooms => untriggeredRooms;
     public bool InitialGenerationComplete => initialGenerationComplete;
 
     private void Awake()
@@ -65,19 +67,45 @@ public class LevelObjectiveManager : MonoBehaviour
     }
 
     /// <summary>Appelé par chaque <see cref="ArenaRoom"/> à son initialisation (Configure).</summary>
-    public void RegisterArena()
+    public void RegisterArena(ArenaRoom room)
     {
-        untriggeredArenas++;
+        if (room == null) return;
+        if (!untriggeredRooms.Contains(room)) untriggeredRooms.Add(room);
     }
 
     /// <summary>Appelé par une <see cref="ArenaRoom"/> dès qu'elle a été déclenchée (mobs spawnés).</summary>
-    public void MarkArenaTriggered()
+    public void MarkArenaTriggered(ArenaRoom room)
     {
-        untriggeredArenas = Mathf.Max(0, untriggeredArenas - 1);
+        if (room != null) untriggeredRooms.Remove(room);
         // Les mobs tout juste instanciés s'enregistrent via MobBase.Start — donc à la frame
         // suivante. Évaluer la victoire tout de suite ouvrirait une race condition : le
         // compteur d'ennemis vaut encore 0 alors que des mobs vont s'ajouter. On diffère.
         StartCoroutine(DeferredVictoryCheck());
+    }
+
+    /// <summary>
+    /// Retourne l'<see cref="ArenaRoom"/> non déclenchée la plus proche d'une position monde,
+    /// ou <c>null</c> si toutes les arènes ont été déclenchées. Nettoie à la volée les
+    /// entrées devenues null (arène détruite avant d'avoir été déclenchée).
+    /// </summary>
+    public ArenaRoom GetNearestUntriggeredArena(Vector3 playerPosition)
+    {
+        ArenaRoom nearest = null;
+        float bestSq = float.PositiveInfinity;
+
+        for (int i = untriggeredRooms.Count - 1; i >= 0; i--)
+        {
+            var room = untriggeredRooms[i];
+            if (room == null) { untriggeredRooms.RemoveAt(i); continue; }
+
+            float dSq = (room.transform.position - playerPosition).sqrMagnitude;
+            if (dSq < bestSq)
+            {
+                bestSq = dSq;
+                nearest = room;
+            }
+        }
+        return nearest;
     }
 
     private IEnumerator DeferredVictoryCheck()
@@ -94,7 +122,7 @@ public class LevelObjectiveManager : MonoBehaviour
         if (!initialGenerationComplete) return;
         if (!hasEverRegistered) return;
         if (totalEnemiesRemaining > 0) return;
-        if (untriggeredArenas > 0) return;
+        if (untriggeredRooms.Count > 0) return;
 
         victoryFired = true;
         Debug.Log("[LEVEL] Victoire ! Tous les ennemis ont été purgés dans toutes les arènes.");

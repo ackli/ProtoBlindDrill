@@ -54,7 +54,7 @@ public class ArenaRoom : MonoBehaviour
         // juste avant MarkInitialGenerationComplete() dans la même frame. On enregistre ici
         // (et pas en Start) pour garantir l'incrément AVANT l'évaluation de victoire initiale.
         if (LevelObjectiveManager.Instance != null)
-            LevelObjectiveManager.Instance.RegisterArena();
+            LevelObjectiveManager.Instance.RegisterArena(this);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -66,7 +66,7 @@ public class ArenaRoom : MonoBehaviour
         Spawn();
 
         if (LevelObjectiveManager.Instance != null)
-            LevelObjectiveManager.Instance.MarkArenaTriggered();
+            LevelObjectiveManager.Instance.MarkArenaTriggered(this);
     }
 
     private void Spawn()
