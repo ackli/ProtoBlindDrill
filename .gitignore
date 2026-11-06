@@ -103,3 +103,18 @@ crashlytics-build.properties
 /graphify-out/
 /.claude/
 /CLAUDE.md
+
+# Graphify - fichiers et dossiers générés
+/graphify-out/
+/Assets/graphify-out/
+
+# Graphify - fichiers de configuration locaux
+/.claude/skills/graphify/
+/.claude/CLAUDE.md
+/.claude/settings.json
+/CLAUDE.md
+
+# Fichiers Graphify éventuellement générés ailleurs
+**/graphify-out/
+**/*graphify*.json
+**/*graphify*.meta

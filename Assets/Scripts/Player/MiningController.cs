@@ -39,12 +39,23 @@ public class MiningController : MonoBehaviour
     [Tooltip("Référencer PlayerInputActions.inputactions.")]
     [SerializeField] private InputActionAsset inputActions;
 
-    private InputAction mineAction;
     private InputAction aimAction;
 
     private Vector3Int currentTargetCell;
     private bool hasTarget;
     private DestructibleTerrain destructibleTerrain;
+
+    /// <summary>Cellule tilemap actuellement sous la visée (valide uniquement si <see cref="HasTarget"/>).</summary>
+    public Vector3Int CurrentTargetCell => currentTargetCell;
+
+    /// <summary>True si la visée pointe une tuile destructible atteignable orthogonalement.</summary>
+    public bool HasTarget => hasTarget;
+
+    /// <summary>Tilemap sur laquelle on mine (résolue au Awake).</summary>
+    public Tilemap Tilemap => tilemap;
+
+    /// <summary>Composant de dégâts de la tilemap, s'il existe (sinon fallback SetTile null).</summary>
+    public DestructibleTerrain DestructibleTerrain => destructibleTerrain;
 
     // Buffers du BFS 4-connectivité pour éviter d'allouer chaque frame.
     private readonly HashSet<Vector3Int> bfsVisited = new HashSet<Vector3Int>();
@@ -66,7 +77,6 @@ public class MiningController : MonoBehaviour
         }
 
         var map = inputActions.FindActionMap("Player", throwIfNotFound: true);
-        mineAction = map.FindAction("Mine", throwIfNotFound: true);
         aimAction = map.FindAction("Aim", throwIfNotFound: true);
     }
 
@@ -89,17 +99,13 @@ public class MiningController : MonoBehaviour
 
     private void OnEnable()
     {
-        if (mineAction == null || aimAction == null) return;
-        mineAction.Enable();
+        if (aimAction == null) return;
         aimAction.Enable();
-        mineAction.performed += OnMinePerformed;
     }
 
     private void OnDisable()
     {
-        if (mineAction == null || aimAction == null) return;
-        mineAction.performed -= OnMinePerformed;
-        mineAction.Disable();
+        if (aimAction == null) return;
         aimAction.Disable();
     }
 
@@ -248,17 +254,6 @@ public class MiningController : MonoBehaviour
         if (active != null && active.device is Gamepad)
             return aim.magnitude > gamepadDeadzone;
         return false;
-    }
-
-    private void OnMinePerformed(InputAction.CallbackContext _)
-    {
-        if (!hasTarget || tilemap == null) return;
-        if (!tilemap.HasTile(currentTargetCell)) return;
-
-        if (destructibleTerrain != null)
-            destructibleTerrain.TryMine(currentTargetCell);
-        else
-            tilemap.SetTile(currentTargetCell, null);
     }
 
     private void OnDrawGizmos()
