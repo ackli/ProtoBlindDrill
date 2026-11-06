@@ -13,15 +13,18 @@ using UnityEngine.Rendering.Universal;
 /// </summary>
 public class DebugCheatController : MonoBehaviour
 {
-    [Header("Cheats — cocher dans l'Inspector, ou F1..F4 en Play")]
+    [Header("Cheats — cocher dans l'Inspector, ou F1..F5 en Play")]
     [SerializeField] private bool godMode;
     [SerializeField] private bool oneShotKill;
     [SerializeField] private bool fullVision;
+    [SerializeField] private bool arenaRadar;
 
     [Header("References (auto-résolues au Awake si vides)")]
     [SerializeField] private PlayerStats playerStats;
     [Tooltip("Light2D en mode Global à forcer à pleine luminosité pour la Vision Totale.")]
     [SerializeField] private Light2D[] globalLights;
+    [Tooltip("Indicateur UI d'arènes non déclenchées (resté caché tant que ce cheat n'est pas activé).")]
+    [SerializeField] private ArenaIndicatorUI arenaIndicator;
 
     // Flag statique lu par MobBase.OnChildTriggerEnter pour appliquer les dégâts one-shot.
     public static bool OneShotKillEnabled { get; private set; }
@@ -30,6 +33,7 @@ public class DebugCheatController : MonoBehaviour
     private bool godModeSynced;
     private bool oneShotSynced;
     private bool fullVisionSynced;
+    private bool arenaRadarSynced;
 
     // Snapshot ambient pour la restauration de la Vision Totale.
     private float[] originalIntensities;
@@ -38,6 +42,7 @@ public class DebugCheatController : MonoBehaviour
     private void Awake()
     {
         if (playerStats == null) playerStats = FindFirstObjectByType<PlayerStats>();
+        if (arenaIndicator == null) arenaIndicator = FindFirstObjectByType<ArenaIndicatorUI>(FindObjectsInactive.Include);
 
         if (globalLights == null || globalLights.Length == 0)
         {
@@ -67,11 +72,13 @@ public class DebugCheatController : MonoBehaviour
             if (kb.f2Key.wasPressedThisFrame) oneShotKill = !oneShotKill;
             if (kb.f3Key.wasPressedThisFrame) Nuke();
             if (kb.f4Key.wasPressedThisFrame) fullVision = !fullVision;
+            if (kb.f5Key.wasPressedThisFrame) arenaRadar = !arenaRadar;
         }
 
         if (godMode != godModeSynced) { ApplyGodMode(godMode); godModeSynced = godMode; }
         if (oneShotKill != oneShotSynced) { ApplyOneShot(oneShotKill); oneShotSynced = oneShotKill; }
         if (fullVision != fullVisionSynced) { ApplyFullVision(fullVision); fullVisionSynced = fullVision; }
+        if (arenaRadar != arenaRadarSynced) { ApplyArenaRadar(arenaRadar); arenaRadarSynced = arenaRadar; }
     }
 
     [ContextMenu("Toggle God Mode (F1)")]
@@ -97,6 +104,9 @@ public class DebugCheatController : MonoBehaviour
     [ContextMenu("Toggle Full Vision (F4)")]
     public void ToggleFullVision() => fullVision = !fullVision;
 
+    [ContextMenu("Toggle Arena Radar (F5)")]
+    public void ToggleArenaRadar() => arenaRadar = !arenaRadar;
+
     private void ApplyGodMode(bool on)
     {
         if (playerStats != null)
@@ -112,6 +122,14 @@ public class DebugCheatController : MonoBehaviour
     {
         OneShotKillEnabled = on;
         Debug.LogWarning($"[CHEAT] One-Shot Kill {(on ? "activé" : "désactivé")}");
+    }
+
+    private void ApplyArenaRadar(bool on)
+    {
+        if (arenaIndicator == null) arenaIndicator = FindFirstObjectByType<ArenaIndicatorUI>(FindObjectsInactive.Include);
+        if (arenaIndicator != null) arenaIndicator.isRadarEnabled = on;
+
+        Debug.Log($"Cheat: Radar d'arènes {(on ? "ACTIVÉ" : "DÉSACTIVÉ")}");
     }
 
     private void ApplyFullVision(bool on)
@@ -138,6 +156,7 @@ public class DebugCheatController : MonoBehaviour
     {
         // Sécurité : à la désactivation du GO (reload de scène, exit Play), on remet les flags neutres.
         if (fullVisionSynced) ApplyFullVision(false);
+        if (arenaRadarSynced && arenaIndicator != null) arenaIndicator.isRadarEnabled = false;
         OneShotKillEnabled = false;
         if (playerStats != null) playerStats.GodMode = false;
     }

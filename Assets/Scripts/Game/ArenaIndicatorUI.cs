@@ -12,6 +12,10 @@ using UnityEngine.UI;
 /// </summary>
 public class ArenaIndicatorUI : MonoBehaviour
 {
+    [Header("Enable")]
+    [Tooltip("Désactivé par défaut. Bascule via DebugCheatController (F5) ou depuis l'Inspector.")]
+    public bool isRadarEnabled = false;
+
     [Header("Target")]
     [Tooltip("RectTransform de l'icône à déplacer et faire pulser. Peut être ce même GameObject.")]
     [SerializeField] private RectTransform indicatorRect;
@@ -64,6 +68,14 @@ public class ArenaIndicatorUI : MonoBehaviour
     private void Update()
     {
         if (indicatorRect == null) return;
+
+        // Court-circuit : si le radar est désactivé (cas par défaut), on ne fait AUCUN calcul
+        // (pas de WorldToScreenPoint, pas de GetNearest...) et on force l'invisibilité.
+        if (!isRadarEnabled)
+        {
+            if (indicatorGraphic != null) indicatorGraphic.enabled = false;
+            return;
+        }
 
         if (LevelObjectiveManager.Instance == null) { SetVisible(false); return; }
 
