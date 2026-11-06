@@ -13,7 +13,7 @@ public class DrillController : MonoBehaviour
 {
     [Header("Drill Timing")]
     [Tooltip("Durée de maintien avant que la foreuse ne devienne active.")]
-    [SerializeField] private float chargeUpTime = 0.25f;
+    [SerializeField] private float chargeUpTime = 0.07f;
 
     [Tooltip("Intervalle entre deux tentatives de destruction une fois la foreuse active (secondes).")]
     [SerializeField] private float drillTickRate = 0.1f;

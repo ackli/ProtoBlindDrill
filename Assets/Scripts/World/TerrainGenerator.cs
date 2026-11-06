@@ -20,8 +20,8 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private TileBase lightCrystalTile;
 
     [Range(0f, 1f)]
-    [Tooltip("Probabilité qu'un bloc de terre (dirt) soit remplacé par un bloc de lumière lors de la génération. Recommandé : 0.05 à 0.10.")]
-    [SerializeField] private float crystalSpawnChance = 0.07f;
+    [Tooltip("Probabilité qu'un bloc de terre (dirt) soit remplacé par un bloc de lumière lors de la génération. Recommandé : 0.05 à 0.15.")]
+    [SerializeField] private float crystalSpawnChance = 0.14f;
 
     [Tooltip("Seed indépendante du tirage de remplacement par les blocs de lumière, pour une génération reproductible.")]
     [SerializeField] private int crystalSeed = 7777;
@@ -56,11 +56,14 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private int cavitySeed = 1337;
 
     [Header("Safe Spawn")]
-    [Tooltip("Largeur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur.")]
-    [SerializeField] private int safeSpawnWidth = 7;
+    [Tooltip("Largeur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur. Joueur ≈ 1 cellule de large → 2 suffit pour ne pas être coincé.")]
+    [SerializeField] private int safeSpawnWidth = 2;
 
-    [Tooltip("Hauteur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur.")]
-    [SerializeField] private int safeSpawnHeight = 5;
+    [Tooltip("Hauteur (en cellules) de la zone vide garantie au haut-centre pour le spawn du joueur. Joueur ≈ 1.5 cellule de haut → 3 donne une case de headroom.")]
+    [SerializeField] private int safeSpawnHeight = 3;
+
+    [Tooltip("Nombre de cellules de Bedrock ajoutées AU-DESSUS de topRight.y sur les colonnes gauche/droite, pour empêcher le joueur de retomber à côté du spawn depuis la surface. 0 = pas de mur.")]
+    [SerializeField] private int bedrockWallExtension = 20;
 
     [Header("Behavior")]
     [Tooltip("Générer automatiquement au Start. Décocher si tu peins la Tilemap à la main.")]
@@ -206,6 +209,10 @@ public class TerrainGenerator : MonoBehaviour
 
         tilemap.SetTiles(positions, tiles);
 
+        // Prolonge les colonnes Bedrock gauche/droite au-dessus de topRight.y pour empêcher
+        // le joueur de retomber à côté de la safe spawn depuis la surface (canyon vertical).
+        ExtendBedrockWalls();
+
         SyncBlockers(positions, tiles);
 
         // 2. Instancie les ArenaRoom au centre de chaque rect.
@@ -214,6 +221,52 @@ public class TerrainGenerator : MonoBehaviour
         // 3. Signale à l'objectif de niveau que la génération initiale est OK.
         if (LevelObjectiveManager.Instance != null)
             LevelObjectiveManager.Instance.MarkInitialGenerationComplete();
+    }
+
+    /// <summary>
+    /// Pose du Bedrock sur les colonnes gauche/droite AU-DESSUS de topRight.y, sur
+    /// <see cref="bedrockWallExtension"/> cellules. Objectif : empêcher le joueur
+    /// de retomber à côté de la safe spawn depuis la surface — les deux colonnes
+    /// forment un canyon vertical qui canalise la chute vers la zone de spawn.
+    /// Pas de SpawnBlocker ici : le NavMesh ne couvre pas cette bande, et le
+    /// TilemapCollider2D suffit pour arrêter le Rigidbody2D du joueur.
+    /// </summary>
+    private void ExtendBedrockWalls()
+    {
+        if (bedrockTile == null || bedrockWallExtension <= 0) return;
+
+        int count = bedrockWallExtension * 2;
+        var wallPos = new Vector3Int[count];
+        var wallTiles = new TileBase[count];
+        int k = 0;
+        for (int y = topRight.y + 1; y <= topRight.y + bedrockWallExtension; y++)
+        {
+            wallPos[k] = new Vector3Int(bottomLeft.x, y, 0);
+            wallTiles[k] = bedrockTile;
+            k++;
+            wallPos[k] = new Vector3Int(topRight.x, y, 0);
+            wallTiles[k] = bedrockTile;
+            k++;
+        }
+        tilemap.SetTiles(wallPos, wallTiles);
+    }
+
+    /// <summary>
+    /// Centre monde de la safe spawn — utile pour positionner le joueur par script
+    /// plutôt que de dépendre du placement manuel dans la scène.
+    /// </summary>
+    public Vector3 GetSafeSpawnWorldCenter()
+    {
+        if (tilemap == null) tilemap = GetComponent<Tilemap>();
+        int centerX = (bottomLeft.x + topRight.x) / 2;
+        int halfW = safeSpawnWidth / 2;
+        int sMinX = centerX - halfW;
+        int sMaxX = centerX + (safeSpawnWidth - halfW - 1);
+        int sMinY = topRight.y - safeSpawnHeight + 1;
+        int sMaxY = topRight.y;
+        Vector3 min = tilemap.CellToWorld(new Vector3Int(sMinX, sMinY, 0));
+        Vector3 max = tilemap.CellToWorld(new Vector3Int(sMaxX + 1, sMaxY + 1, 0));
+        return (min + max) * 0.5f;
     }
 
     /// <summary>
