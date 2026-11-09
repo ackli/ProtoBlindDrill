@@ -21,10 +21,21 @@ public class EquipmentManager : MonoBehaviour
     private MonoBehaviour currentWeapon;
     private MonoBehaviour currentGear;
 
+    private string currentWeaponDisplayName;
+    private string currentGearDisplayName;
+
     public MonoBehaviour CurrentWeapon => currentWeapon;
     public MonoBehaviour CurrentGear => currentGear;
     public string WeaponName => currentWeapon != null ? currentWeapon.GetType().Name : "(aucune)";
     public string GearName => currentGear != null ? currentGear.GetType().Name : "(aucun)";
+
+    /// <summary>Nom lisible de l'arme équipée (fourni par le PickupItem via displayName).
+    /// Fallback sur <see cref="WeaponName"/> (nom de type C#) si aucun displayName n'a été passé
+    /// — typiquement pour l'arme initiale résolue par <see cref="EnsureSlot"/>.</summary>
+    public string WeaponDisplayName => string.IsNullOrEmpty(currentWeaponDisplayName) ? WeaponName : currentWeaponDisplayName;
+
+    /// <summary>Nom lisible du gear équipé. Fallback sur <see cref="GearName"/> si aucun displayName.</summary>
+    public string GearDisplayName => string.IsNullOrEmpty(currentGearDisplayName) ? GearName : currentGearDisplayName;
 
     /// <summary>Nom simple du type C# de l'arme équipée (ex: "ShotgunWeapon"), ou chaîne vide si aucune.
     /// Utilisé par <see cref="LevelObjectiveManager.GetRandomRewardPrefab"/> pour exclure du loot
@@ -38,6 +49,9 @@ public class EquipmentManager : MonoBehaviour
     {
         currentWeapon = EnsureSlot(defaultWeaponType, typeof(IWeapon));
         currentGear = EnsureSlot(defaultGearType, typeof(IMovementGear));
+        // Pas de displayName à l'init : les getters Display tomberont en fallback sur WeaponName/GearName.
+        currentWeaponDisplayName = null;
+        currentGearDisplayName = null;
         Debug.Log($"[EQUIP] Init → Arme: {WeaponName} | Gear: {GearName}");
         OnEquipmentChanged?.Invoke();
     }
@@ -45,13 +59,17 @@ public class EquipmentManager : MonoBehaviour
     /// <summary>Remplace l'arme actuelle par une instance du <paramref name="newType"/>.</summary>
     public bool EquipWeapon(Type newType, string displayName = null)
     {
-        return Swap(ref currentWeapon, newType, typeof(IWeapon), "Arme", displayName);
+        bool ok = Swap(ref currentWeapon, newType, typeof(IWeapon), "Arme", displayName);
+        if (ok) currentWeaponDisplayName = displayName;
+        return ok;
     }
 
     /// <summary>Remplace le gear actuel par une instance du <paramref name="newType"/>.</summary>
     public bool EquipGear(Type newType, string displayName = null)
     {
-        return Swap(ref currentGear, newType, typeof(IMovementGear), "Gear", displayName);
+        bool ok = Swap(ref currentGear, newType, typeof(IMovementGear), "Gear", displayName);
+        if (ok) currentGearDisplayName = displayName;
+        return ok;
     }
 
     private bool Swap(ref MonoBehaviour slot, Type newType, Type markerInterface, string slotLabel, string displayName)
