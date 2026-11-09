@@ -95,6 +95,9 @@ public class PlayerMovement2D : MonoBehaviour
     /// <summary>État "touche Jump maintenue" exposé pour les gears (JetpackGear l'utilise pour la poussée).</summary>
     public bool JumpHeld => jumpHeld;
 
+    /// <summary>État "au sol" exposé pour les gears (JetpackGear l'utilise pour la recharge du carburant).</summary>
+    public bool IsGrounded => isGrounded;
+
     /// <summary>InputActionAsset partagé — utilisé par les armes ajoutées en runtime (AddComponent) pour éviter d'avoir à le resérialiser.</summary>
     public InputActionAsset InputActions => inputActions;
     private float lastGroundedTime = -999f;
