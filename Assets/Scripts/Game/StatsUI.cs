@@ -15,8 +15,8 @@ public class StatsUI : MonoBehaviour
     [Tooltip("Text qui affiche la liste des buffs. Un par ligne, \"Buff: +X%\".")]
     [SerializeField] private Text statsText;
 
-    [Tooltip("Masque le Text quand aucun buff n'est actif (évite une ligne vide).")]
-    [SerializeField] private bool hideWhenEmpty = true;
+    [Tooltip("Texte de substitution affiché tant qu'aucun buff n'a été collecté — garantit que le composant reste visible et que le bug est diagnostiquable.")]
+    [SerializeField] private string emptyPlaceholder = "Aucun buff";
 
     private readonly StringBuilder sb = new StringBuilder(128);
 
@@ -61,7 +61,12 @@ public class StatsUI : MonoBehaviour
         // Trim trailing newline pour un rendu propre.
         if (sb.Length > 0 && sb[sb.Length - 1] == '\n') sb.Length--;
 
+        // Rendu défensif : si aucun buff actif, on affiche un placeholder plutôt que de masquer le
+        // Text. Le composant reste visible → un bug "UI invisible" devient immédiatement discernable
+        // d'un bug "event jamais invoqué" (le placeholder resterait figé dans ce dernier cas).
+        if (sb.Length == 0) sb.Append(emptyPlaceholder);
+
         statsText.text = sb.ToString();
-        if (hideWhenEmpty) statsText.enabled = sb.Length > 0;
+        statsText.enabled = true;
     }
 }

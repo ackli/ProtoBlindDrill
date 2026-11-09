@@ -16,6 +16,13 @@ public class EquipmentManager : MonoBehaviour
     [Tooltip("Nom de type du gear par défaut (ex: 'WallJumpGear'). Marker pour le wall-jump déjà porté par PlayerMovement2D.")]
     [SerializeField] private string defaultGearType = "WallJumpGear";
 
+    [Header("Defaults (noms lisibles UI)")]
+    [Tooltip("Nom lisible affiché pour l'arme initiale (ex: 'Arme de base'). Utilisé par EquipmentUI tant qu'aucun pickup n'a fourni de displayName.")]
+    [SerializeField] private string defaultWeaponDisplayName = "Arme de base";
+
+    [Tooltip("Nom lisible affiché pour le gear initial (ex: 'Saut natif').")]
+    [SerializeField] private string defaultGearDisplayName = "Saut natif";
+
     public event Action OnEquipmentChanged;
 
     private MonoBehaviour currentWeapon;
@@ -45,14 +52,19 @@ public class EquipmentManager : MonoBehaviour
     /// <summary>Nom simple du type C# du gear équipé (ex: "JetpackGear"), ou chaîne vide si aucun.</summary>
     public string CurrentGearTypeName => currentGear != null ? currentGear.GetType().Name : string.Empty;
 
-    private void Start()
+    private void Awake()
     {
+        // Init en Awake (pas Start) pour garantir que CurrentWeaponTypeName / CurrentGearTypeName
+        // soient résolus AVANT le Start() de tout consommateur (EquipmentUI, LevelObjectiveManager
+        // qui lit l'équipement actif pour filtrer les loots). Évite la race où un consommateur
+        // Start() lisait un état vide.
         currentWeapon = EnsureSlot(defaultWeaponType, typeof(IWeapon));
         currentGear = EnsureSlot(defaultGearType, typeof(IMovementGear));
-        // Pas de displayName à l'init : les getters Display tomberont en fallback sur WeaponName/GearName.
-        currentWeaponDisplayName = null;
-        currentGearDisplayName = null;
-        Debug.Log($"[EQUIP] Init → Arme: {WeaponName} | Gear: {GearName}");
+        // Seed les displayName depuis l'Inspector pour que l'UI n'affiche jamais le nom de type
+        // C# brut (ex: "ShootingController") pour l'équipement initial.
+        currentWeaponDisplayName = defaultWeaponDisplayName;
+        currentGearDisplayName = defaultGearDisplayName;
+        Debug.Log($"[EQUIP] Init → Arme: {WeaponDisplayName} ({WeaponName}) | Gear: {GearDisplayName} ({GearName})");
         OnEquipmentChanged?.Invoke();
     }
 
@@ -60,7 +72,12 @@ public class EquipmentManager : MonoBehaviour
     public bool EquipWeapon(Type newType, string displayName = null)
     {
         bool ok = Swap(ref currentWeapon, newType, typeof(IWeapon), "Arme", displayName);
-        if (ok) currentWeaponDisplayName = displayName;
+        if (ok)
+        {
+            currentWeaponDisplayName = displayName;
+            // Invoke APRÈS la MAJ du displayName : sinon les abonnés UI lisent l'ancien nom (off-by-one).
+            OnEquipmentChanged?.Invoke();
+        }
         return ok;
     }
 
@@ -68,7 +85,12 @@ public class EquipmentManager : MonoBehaviour
     public bool EquipGear(Type newType, string displayName = null)
     {
         bool ok = Swap(ref currentGear, newType, typeof(IMovementGear), "Gear", displayName);
-        if (ok) currentGearDisplayName = displayName;
+        if (ok)
+        {
+            currentGearDisplayName = displayName;
+            // Invoke APRÈS la MAJ du displayName : voir EquipWeapon pour le détail.
+            OnEquipmentChanged?.Invoke();
+        }
         return ok;
     }
 
@@ -103,7 +125,8 @@ public class EquipmentManager : MonoBehaviour
         var comp = gameObject.AddComponent(newType) as MonoBehaviour;
         slot = comp;
         Debug.Log($"[EQUIP] {slotLabel} équipé : {displayName ?? newType.Name}");
-        OnEquipmentChanged?.Invoke();
+        // L'event OnEquipmentChanged est déclenché par EquipWeapon/EquipGear après MAJ du displayName
+        // associé, pour éviter que les abonnés UI lisent un displayName périmé (off-by-one).
         return true;
     }
 

@@ -58,11 +58,18 @@ public class LevelObjectiveManager : MonoBehaviour
         // Construit la liste des choix valides : tout prefab dont le componentTypeName du PickupItem
         // ne matche NI l'arme NI le gear actuellement équipé. Comparaison par nom simple, cohérente
         // avec CurrentWeaponTypeName / CurrentGearTypeName (qui renvoient GetType().Name).
+        // On trace aussi quels kinds étaient présents dans la pool brute : si l'anti-doublon vide
+        // entièrement un kind (ex: seul gear de la pool == gear équipé), on le réinjecte pour
+        // préserver la rotation Weapon/Movement — un doublon ponctuel est moins frustrant que
+        // "plus jamais de gear qui drop".
+        bool hasWeaponInRaw = false, hasMovementInRaw = false;
         var pool = new List<PickupItem>(rewardPrefabs.Length);
         for (int i = 0; i < rewardPrefabs.Length; i++)
         {
             var p = rewardPrefabs[i];
             if (p == null) continue;
+            if (p.Kind == PickupItem.EquipmentKind.Weapon) hasWeaponInRaw = true;
+            else hasMovementInRaw = true;
             var t = p.ComponentTypeName;
             if (!string.IsNullOrEmpty(t) &&
                 (t == equippedWeapon || t == equippedGear))
@@ -70,11 +77,32 @@ public class LevelObjectiveManager : MonoBehaviour
             pool.Add(p);
         }
 
-        // Fallback de sécurité : si le filtrage a tout éliminé (configuration dégénérée), on tire
-        // dans la pool complète pour au moins droper un objet (quitte à être un doublon).
+        // Détection des kinds orphelins (présents dans la pool brute mais vidés par l'anti-doublon).
+        bool hasWeaponInPool = false, hasMovementInPool = false;
+        for (int i = 0; i < pool.Count; i++)
+        {
+            if (pool[i].Kind == PickupItem.EquipmentKind.Weapon) hasWeaponInPool = true;
+            else hasMovementInPool = true;
+        }
+        if (hasWeaponInRaw && !hasWeaponInPool)
+        {
+            Debug.LogWarning("[LEVEL] Pool Weapon vidée par l'anti-doublon → réinjection depuis la pool brute pour préserver la rotation.");
+            for (int i = 0; i < rewardPrefabs.Length; i++)
+                if (rewardPrefabs[i] != null && rewardPrefabs[i].Kind == PickupItem.EquipmentKind.Weapon)
+                    pool.Add(rewardPrefabs[i]);
+        }
+        if (hasMovementInRaw && !hasMovementInPool)
+        {
+            Debug.LogWarning("[LEVEL] Pool Movement vidée par l'anti-doublon → réinjection depuis la pool brute pour préserver la rotation.");
+            for (int i = 0; i < rewardPrefabs.Length; i++)
+                if (rewardPrefabs[i] != null && rewardPrefabs[i].Kind == PickupItem.EquipmentKind.Movement)
+                    pool.Add(rewardPrefabs[i]);
+        }
+
+        // Fallback ultime : pool brute vide ou constituée uniquement de null.
         if (pool.Count == 0)
         {
-            Debug.LogWarning("[LEVEL] Toutes les récompenses matchent l'équipement actif → fallback tirage brut.");
+            Debug.LogWarning("[LEVEL] Aucune récompense tirable (pool brute vide ou invalide) → fallback tirage brut.");
             return rewardPrefabs[UnityEngine.Random.Range(0, rewardPrefabs.Length)];
         }
 

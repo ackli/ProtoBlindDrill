@@ -29,9 +29,6 @@ public class ShootingController : MonoBehaviour, IWeapon
     [Tooltip("Caméra pour convertir la position souris en monde. Si null, Camera.main.")]
     [SerializeField] private Camera targetCamera;
 
-    [Tooltip("À la manette, distance virtuelle du réticule depuis le joueur dans la direction du stick droit.")]
-    [SerializeField] private float gamepadAimDistance = 2.5f;
-
     [Tooltip("Deadzone du stick droit avant de considérer qu'on vise à la manette.")]
     [SerializeField] private float gamepadDeadzone = 0.3f;
 

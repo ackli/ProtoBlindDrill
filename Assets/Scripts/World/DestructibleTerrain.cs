@@ -16,10 +16,6 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Prefab LightOrb spawnable à la destruction d'une tuile de terre (Dirt).")]
     [SerializeField] private LightOrb lightOrbPrefab;
 
-    [Range(0f, 1f)]
-    [Tooltip("Probabilité de spawner un LightOrb sur destruction d'un Dirt.")]
-    [SerializeField] private float orbSpawnChance = 0.15f;
-
     [Header("NavMesh Blockers (3D)")]
     [Tooltip("Prefab de Blocker 3D optionnel. Laisse vide pour générer dynamiquement un GameObject avec BoxCollider + NavMeshObstacle (Carve).")]
     [SerializeField] private GameObject blockerPrefab;
