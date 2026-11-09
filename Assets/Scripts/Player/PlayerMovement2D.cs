@@ -56,8 +56,14 @@ public class PlayerMovement2D : MonoBehaviour
     [Tooltip("Offset horizontal (depuis le centre du joueur) des boîtes de détection de mur. ~ demi-largeur du collider + petite marge.")]
     [SerializeField] private float wallCheckOffset = 0.5f;
 
-    [Tooltip("Taille de la boîte wall-check. X suffisamment large pour englober le bord du collider ET pénétrer dans la tuile (sinon la détection est aléatoire). Y ≈ hauteur du collider − marge pour ne pas déborder dans le sol/plafond.")]
-    [SerializeField] private Vector2 wallCheckSize = new Vector2(0.25f, 1.0f);
+    [Tooltip("Offset vertical de la probe BASSE (depuis le pivot). Négatif = sous le centre, vers les pieds.")]
+    [SerializeField] private float wallProbeLowOffsetY = -0.3f;
+
+    [Tooltip("Offset vertical de la probe HAUTE (depuis le pivot). Positif = au-dessus du centre. Un mur n'est validé que si les DEUX probes touchent : un bloc isolé d'1 unité ne déclenchera plus de wall-slide.")]
+    [SerializeField] private float wallProbeHighOffsetY = 0.4f;
+
+    [Tooltip("Taille de chaque probe de mur (basse + haute). Y volontairement petit pour que la probe haute ne retombe pas sur un bloc solo d'1 u.")]
+    [SerializeField] private Vector2 wallProbeSize = new Vector2(0.25f, 0.3f);
 
     [Tooltip("Force appliquée au wall jump. X = répulsion du mur (plus bas = trajectoire plus verticale), Y = impulsion verticale.")]
     [SerializeField] private Vector2 wallJumpForce = new Vector2(6f, 15f);
@@ -65,12 +71,11 @@ public class PlayerMovement2D : MonoBehaviour
     [Tooltip("Durée (s) pendant laquelle l'input horizontal est ignoré après un wall jump — évite le recollage immédiat au mur.")]
     [SerializeField] private float wallJumpDuration = 0.2f;
 
-    [Tooltip("Vitesse maximale de chute (unités absolues) tant que le joueur est collé à un mur : simule l'accroche + glissade. Mettre 0 pour désactiver.")]
-    [SerializeField] private float wallSlideFallSpeed = 3f;
+    [Tooltip("Vitesse de chute CIBLE (u/s, valeur absolue) tant que le joueur est collé à un mur. Atteinte progressivement via wallSlideFriction, pas en instantané. Mettre 0 pour désactiver.")]
+    [SerializeField] private float wallSlideFallSpeed = 1.5f;
 
-    [Tooltip("Seuil minimal d'input horizontal pour qu'un wall jump se déclenche (l'input DOIT pointer à l'opposé du mur — ex. mur à droite → appuyer à gauche).")]
-    [Range(0f, 1f)]
-    [SerializeField] private float wallJumpInputThreshold = 0.2f;
+    [Tooltip("Friction appliquée en wall-slide (u/s²) : vitesse à laquelle la vélocité Y converge vers -wallSlideFallSpeed. Plus haut = freinage plus brutal, sensation d'accroche forte.")]
+    [SerializeField] private float wallSlideFriction = 40f;
 
     [Header("Input")]
     [Tooltip("Référencer PlayerInputActions.inputactions.")]
@@ -213,44 +218,41 @@ public class PlayerMovement2D : MonoBehaviour
             return;
         }
 
-        // 2. Wall jump : input bufferisé + en l'air (hors coyote) + mur à portée
-        //    + input horizontal VERS le mur.
-        //    → Mur à droite  (+1) : il faut tenir D (moveInputX > 0)
-        //    → Mur à gauche (-1) : il faut tenir Q (moveInputX < 0)
-        //    La propulsion part quand même du côté opposé au mur ("Mario style").
+        // 2. Wall jump : input bufferisé + en l'air (hors coyote) + mur à portée.
+        //    L'éjection est AUTOMATIQUE à l'opposé du mur : aucune direction d'input requise.
+        //    Le verrou wallJumpLockUntil empêche ensuite un recollage immédiat si le joueur
+        //    tient toujours la direction du mur.
         //    Désactivé si WallJumpEnabled = false (ex: JetpackGear équipé).
         if (withinBuffer && !isGrounded && WallJumpEnabled)
         {
             int wallDir = GetWallDirection();
             if (wallDir != 0)
             {
-                bool inputTowardWall =
-                    Mathf.Abs(moveInputX) > wallJumpInputThreshold
-                    && Mathf.Sign(moveInputX) == wallDir;
-
-                if (inputTowardWall)
-                {
-                    // Annule la vélocité Y existante, applique Y vers le haut + X opposé au mur.
-                    rb.linearVelocity = new Vector2(-wallDir * wallJumpForce.x, wallJumpForce.y);
-                    lastJumpPressedTime = -999f;
-                    wallJumpLockUntil = Time.time + wallJumpDuration;
-                }
+                // Éjection horizontale OPPOSÉE à la normale du mur + impulsion verticale.
+                rb.linearVelocity = new Vector2(-wallDir * wallJumpForce.x, wallJumpForce.y);
+                lastJumpPressedTime = -999f;
+                wallJumpLockUntil = Time.time + wallJumpDuration;
             }
         }
     }
 
     /// <summary>
     /// Retourne le signe du mur en contact (+1 à droite, −1 à gauche, 0 aucun).
-    /// Utilise deux OverlapBox verticaux de chaque côté du joueur sur le groundLayer.
+    /// Un côté n'est validé que si les DEUX probes (basse + haute) touchent du groundLayer :
+    /// un mur d'un seul bloc de haut ne déclenchera donc plus de wall-slide.
     /// </summary>
     private int GetWallDirection()
     {
         Vector2 center = transform.position;
-        Vector2 rightCenter = center + Vector2.right * wallCheckOffset;
-        Vector2 leftCenter = center + Vector2.left * wallCheckOffset;
+        Vector2 rightLow = center + new Vector2(+wallCheckOffset, wallProbeLowOffsetY);
+        Vector2 rightHigh = center + new Vector2(+wallCheckOffset, wallProbeHighOffsetY);
+        Vector2 leftLow = center + new Vector2(-wallCheckOffset, wallProbeLowOffsetY);
+        Vector2 leftHigh = center + new Vector2(-wallCheckOffset, wallProbeHighOffsetY);
 
-        bool wallRight = Physics2D.OverlapBox(rightCenter, wallCheckSize, 0f, groundLayer);
-        bool wallLeft = Physics2D.OverlapBox(leftCenter, wallCheckSize, 0f, groundLayer);
+        bool wallRight = Physics2D.OverlapBox(rightLow, wallProbeSize, 0f, groundLayer)
+                      && Physics2D.OverlapBox(rightHigh, wallProbeSize, 0f, groundLayer);
+        bool wallLeft = Physics2D.OverlapBox(leftLow, wallProbeSize, 0f, groundLayer)
+                     && Physics2D.OverlapBox(leftHigh, wallProbeSize, 0f, groundLayer);
 
         if (wallRight && !wallLeft) { lastWallDir = +1; return +1; }
         if (wallLeft && !wallRight) { lastWallDir = -1; return -1; }
@@ -281,8 +283,9 @@ public class PlayerMovement2D : MonoBehaviour
     }
 
     /// <summary>
-    /// Si le joueur est en l'air, touche un mur et retombe, bride la vitesse de chute à
-    /// <see cref="wallSlideFallSpeed"/>. Donne la sensation d'accrocher le mur et de glisser.
+    /// Si le joueur est en l'air, touche un mur et retombe, fait converger la vitesse Y vers
+    /// <see cref="wallSlideFallSpeed"/> (valeur absolue) via <see cref="wallSlideFriction"/>.
+    /// Plus de clamp dur : le freinage est progressif, ce qui donne une vraie sensation d'accroche.
     /// Ne s'applique pas pendant le verrou post-wall-jump pour laisser la trajectoire s'exprimer.
     /// </summary>
     private void ApplyWallSlide()
@@ -295,7 +298,10 @@ public class PlayerMovement2D : MonoBehaviour
         if (GetWallDirection() == 0) return;
 
         if (rb.linearVelocity.y < -wallSlideFallSpeed)
-            rb.linearVelocity = new Vector2(rb.linearVelocity.x, -wallSlideFallSpeed);
+        {
+            float newY = Mathf.MoveTowards(rb.linearVelocity.y, -wallSlideFallSpeed, wallSlideFriction * Time.fixedDeltaTime);
+            rb.linearVelocity = new Vector2(rb.linearVelocity.x, newY);
+        }
     }
 
     private void OnDrawGizmosSelected()
@@ -306,13 +312,19 @@ public class PlayerMovement2D : MonoBehaviour
             Gizmos.DrawWireCube(groundCheck.position, groundCheckSize);
         }
 
-        // Wall-check gizmos : rouge si touche, cyan si vide. Visible même hors Play.
+        // Wall-check gizmos : 4 probes (bas/haut × gauche/droite). Rouge si le côté matche
+        // (les DEUX probes de ce côté ont touché), cyan sinon. Visible même hors Play.
         Vector3 c = transform.position;
-        Vector3 right = c + Vector3.right * wallCheckOffset;
-        Vector3 left = c + Vector3.left * wallCheckOffset;
+        Vector3 rightLow = c + new Vector3(+wallCheckOffset, wallProbeLowOffsetY, 0f);
+        Vector3 rightHigh = c + new Vector3(+wallCheckOffset, wallProbeHighOffsetY, 0f);
+        Vector3 leftLow = c + new Vector3(-wallCheckOffset, wallProbeLowOffsetY, 0f);
+        Vector3 leftHigh = c + new Vector3(-wallCheckOffset, wallProbeHighOffsetY, 0f);
+
         Gizmos.color = lastWallDir == +1 ? Color.red : Color.cyan;
-        Gizmos.DrawWireCube(right, wallCheckSize);
+        Gizmos.DrawWireCube(rightLow, wallProbeSize);
+        Gizmos.DrawWireCube(rightHigh, wallProbeSize);
         Gizmos.color = lastWallDir == -1 ? Color.red : Color.cyan;
-        Gizmos.DrawWireCube(left, wallCheckSize);
+        Gizmos.DrawWireCube(leftLow, wallProbeSize);
+        Gizmos.DrawWireCube(leftHigh, wallProbeSize);
     }
 }
