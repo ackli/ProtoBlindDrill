@@ -55,8 +55,13 @@ public class ShootingController : MonoBehaviour, IWeapon
         stats = GetComponent<PlayerStats>();
         if (targetCamera == null) targetCamera = Camera.main;
 
-        // Partage le prefab de projectile aux armes ajoutées en runtime (Shotgun, Flamethrower).
+        // Si AddComponent via Pickup → projectilePrefab serialized est null. On le récupère
+        // depuis le DefaultPrefab static, initialisé par la toute première instance posée sur le prefab Player.
+        if (projectilePrefab == null) projectilePrefab = DebrisProjectile.DefaultPrefab;
+
+        // Et on (re)partage le prefab pour les armes ajoutées en runtime (Shotgun, Flamethrower, et les futurs ShootingController).
         if (projectilePrefab != null) DebrisProjectile.DefaultPrefab = projectilePrefab;
+        else Debug.LogError("[ShootingController] projectilePrefab introuvable (ni serialized, ni DefaultPrefab static). L'arme ne pourra pas tirer.", this);
 
         if (inputActions == null)
         {
