@@ -72,10 +72,16 @@ public class PlayerMovement2D : MonoBehaviour
     [SerializeField] private float wallJumpDuration = 0.2f;
 
     [Tooltip("Vitesse de chute CIBLE (u/s, valeur absolue) tant que le joueur est collé à un mur. Atteinte progressivement via wallSlideFriction, pas en instantané. Mettre 0 pour désactiver.")]
-    [SerializeField] private float wallSlideFallSpeed = 1.5f;
+    [SerializeField] private float wallSlideFallSpeed = 0.8f;
 
     [Tooltip("Friction appliquée en wall-slide (u/s²) : vitesse à laquelle la vélocité Y converge vers -wallSlideFallSpeed. Plus haut = freinage plus brutal, sensation d'accroche forte.")]
-    [SerializeField] private float wallSlideFriction = 40f;
+    [SerializeField] private float wallSlideFriction = 80f;
+
+    [Tooltip("Terrain destructible interrogé pour n'autoriser wall-slide/wall-jump que sur un 'vrai mur' (tile pleine avec voisin vertical) — filtre les marches d'escalier. Si vide, auto-recherché au démarrage. Null = règle désactivée (fallback : tout mur touché est valide).")]
+    [SerializeField] private DestructibleTerrain wallTerrain;
+
+    [Tooltip("Décalage horizontal (u) ajouté à la position de la probe avant IsWallSlidable, dans le sens du mur. Pousse le point de sample à l'intérieur de la tile pour que WorldToCell ne retombe pas dans la cellule vide côté joueur. 0.15u = marge confortable si cellSize=1.")]
+    [SerializeField] private float wallSampleDepth = 0.15f;
 
     [Header("Input")]
     [Tooltip("Référencer PlayerInputActions.inputactions.")]
@@ -115,6 +121,7 @@ public class PlayerMovement2D : MonoBehaviour
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        if (wallTerrain == null) wallTerrain = FindFirstObjectByType<DestructibleTerrain>();
 
         // Dérivation cinématique :
         //   h = 0.5 * g * t²  →  g = 2h / t²
@@ -257,6 +264,18 @@ public class PlayerMovement2D : MonoBehaviour
         bool wallLeft = Physics2D.OverlapBox(leftLow, wallProbeSize, 0f, groundLayer)
                      && Physics2D.OverlapBox(leftHigh, wallProbeSize, 0f, groundLayer);
 
+        // Filtre anti-escalier : exige un "vrai mur" (tile pleine + voisin vertical) côté
+        // Tilemap. Le point de sample est poussé de wallSampleDepth vers l'intérieur de la
+        // tile pour éviter que WorldToCell retombe dans la cellule vide côté joueur.
+        // Sans wallTerrain référencé, fallback = tout mur touché est valide.
+        if (wallTerrain != null)
+        {
+            Vector2 rightSample = rightLow + new Vector2(+wallSampleDepth, 0f);
+            Vector2 leftSample  = leftLow  + new Vector2(-wallSampleDepth, 0f);
+            if (wallRight && !wallTerrain.IsWallSlidable(rightSample)) wallRight = false;
+            if (wallLeft  && !wallTerrain.IsWallSlidable(leftSample))  wallLeft  = false;
+        }
+
         if (wallRight && !wallLeft) { lastWallDir = +1; return +1; }
         if (wallLeft && !wallRight) { lastWallDir = -1; return -1; }
         lastWallDir = 0;
@@ -329,5 +348,13 @@ public class PlayerMovement2D : MonoBehaviour
         Gizmos.color = lastWallDir == -1 ? Color.red : Color.cyan;
         Gizmos.DrawWireCube(leftLow, wallProbeSize);
         Gizmos.DrawWireCube(leftHigh, wallProbeSize);
+
+        // Points de sample envoyés à IsWallSlidable : visualise où WorldToCell est réellement
+        // calculé (sphère jaune = à l'intérieur de la tile mur si tout va bien).
+        Gizmos.color = Color.yellow;
+        Vector3 rightSample = rightLow + new Vector3(+wallSampleDepth, 0f, 0f);
+        Vector3 leftSample  = leftLow  + new Vector3(-wallSampleDepth, 0f, 0f);
+        Gizmos.DrawSphere(rightSample, 0.08f);
+        Gizmos.DrawSphere(leftSample, 0.08f);
     }
 }

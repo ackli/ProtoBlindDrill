@@ -95,6 +95,24 @@ public class DestructibleTerrain : MonoBehaviour
     public void ClearDamageState() => cellHP.Clear();
 
     /// <summary>
+    /// Teste si une position monde tombe dans un "vrai mur" : une cellule pleine qui a
+    /// au moins un voisin vertical plein (directement au-dessus OU directement en-dessous).
+    /// Un bloc isolé — marche d'escalier, bloc en l'air — n'a ni l'un ni l'autre et renvoie
+    /// false, ce qui coupe wall-slide/wall-jump sur ces cas pathologiques (bug "Mantle"
+    /// playtest). Retourne aussi false si la cellule ciblée n'a pas de tile.
+    /// </summary>
+    public bool IsWallSlidable(Vector3 worldPos)
+    {
+        if (tilemap == null) tilemap = GetComponent<Tilemap>();
+        Vector3Int cell = tilemap.WorldToCell(worldPos);
+        if (tilemap.GetTile(cell) == null) return false;
+
+        bool hasAbove = tilemap.GetTile(cell + Vector3Int.up)   != null;
+        bool hasBelow = tilemap.GetTile(cell + Vector3Int.down) != null;
+        return hasAbove || hasBelow;
+    }
+
+    /// <summary>
     /// Crée (ou réutilise) un Blocker 3D pour la cellule donnée. Appelé par TerrainGenerator après SetTiles.
     /// Retourne le GameObject créé/existant.
     /// </summary>
