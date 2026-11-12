@@ -46,6 +46,10 @@ public class DestructibleTerrain : MonoBehaviour
     [Tooltip("Orbe de buff (prefab avec composant BuffOrb) dropé par la relique. Si assigné, remplace le drop de LightOrbs — la relique devient porteuse d'un bonus permanent de session.")]
     [SerializeField] private BuffOrb buffOrbPrefab;
 
+    [Header("Wall-Slide Rule")]
+    [Tooltip("Tile dédiée aux plateformes d'arène. IsWallSlidable retourne true pour cette tile indépendamment du voisinage — les plateformes flottantes d'1 bloc d'épaisseur restent accrochables au wall-jump. Les autres tiles (terrain naturel) passent par la règle stricte voisin vertical (haut OU bas plein). Doit être le MÊME asset que TerrainGenerator.arenaPlatformTile.")]
+    [SerializeField] private TileBase arenaPlatformTile;
+
     private Tilemap tilemap;
     private readonly Dictionary<Vector3Int, int> cellHP = new Dictionary<Vector3Int, int>();
     private readonly Dictionary<Vector3Int, GameObject> blockers = new Dictionary<Vector3Int, GameObject>();
@@ -95,18 +99,26 @@ public class DestructibleTerrain : MonoBehaviour
     public void ClearDamageState() => cellHP.Clear();
 
     /// <summary>
-    /// Teste si une position monde tombe dans un "vrai mur" : une cellule pleine qui a
-    /// au moins un voisin vertical plein (directement au-dessus OU directement en-dessous).
-    /// Un bloc isolé — marche d'escalier, bloc en l'air — n'a ni l'un ni l'autre et renvoie
-    /// false, ce qui coupe wall-slide/wall-jump sur ces cas pathologiques (bug "Mantle"
-    /// playtest). Retourne aussi false si la cellule ciblée n'a pas de tile.
+    /// Teste si une position monde tombe sur un mur accrochable au wall-slide/wall-jump.
+    /// Deux chemins :
+    /// - Si la tile est <see cref="arenaPlatformTile"/> : bypass → true (plateformes
+    ///   flottantes d'1 bloc d'épaisseur conçues pour être accrochables, peu importe
+    ///   leurs voisins).
+    /// - Sinon (terrain naturel) : règle stricte voisin vertical (haut OU bas plein).
+    ///   Les marches d'escalier isolées renvoient false → wall-slide coupé.
+    /// Retourne false si la cellule ciblée n'a pas de tile.
     /// </summary>
     public bool IsWallSlidable(Vector3 worldPos)
     {
         if (tilemap == null) tilemap = GetComponent<Tilemap>();
         Vector3Int cell = tilemap.WorldToCell(worldPos);
-        if (tilemap.GetTile(cell) == null) return false;
+        TileBase tile = tilemap.GetTile(cell);
+        if (tile == null) return false;
 
+        // Bypass explicite : plateforme d'arène toujours slidable.
+        if (arenaPlatformTile != null && tile == arenaPlatformTile) return true;
+
+        // Terrain naturel : règle stricte voisin vertical (exclut les marches isolées).
         bool hasAbove = tilemap.GetTile(cell + Vector3Int.up)   != null;
         bool hasBelow = tilemap.GetTile(cell + Vector3Int.down) != null;
         return hasAbove || hasBelow;
