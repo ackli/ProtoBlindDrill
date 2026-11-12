@@ -94,6 +94,9 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private int arenaPlacementAttempts = 100;
 
     [Header("Arena Platforms (Tier 2 & 3)")]
+    [Tooltip("Tile dédiée aux plateformes flottantes d'arène. Posée explicitement (au lieu du dirtTile) pour signaler à DestructibleTerrain.IsWallSlidable qu'elle est toujours accrochable au wall-jump, indépendamment des voisins. Assigner le MÊME asset Tile dans DestructibleTerrain.arenaPlatformTile. Si vide, fallback sur dirtTile — mais alors les plateformes 1-bloc ne seront plus wall-slidables.")]
+    [SerializeField] private TileBase arenaPlatformTile;
+
     [Tooltip("Nombre de cellules à partir du sol de la salle à laisser vides avant la première rangée de plateformes.")]
     [SerializeField] private int platformFloorClearance = 2;
 
@@ -367,11 +370,14 @@ public class TerrainGenerator : MonoBehaviour
         if (IsInSafeSpawn(x, y))
             return null;
 
-        // 3. Arènes : vide pour Tier 1, plateformes Perlin pour Tier 2/3.
+        // 3. Arènes : vide pour Tier 1, plateformes dédiées pour Tier 2/3.
+        //    arenaPlatformTile si assignée — ses cellules sont taggées "wall-slidable"
+        //    côté DestructibleTerrain.IsWallSlidable. Fallback dirtTile sinon.
         if (TryGetArenaCell(x, y, out var rect, out var tier))
         {
             if (tier == ArenaRoom.RoomTier.Tier1) return null;
-            if (IsArenaPlatformCell(x, y, rect)) return dirtTile;
+            if (IsArenaPlatformCell(x, y, rect))
+                return arenaPlatformTile != null ? arenaPlatformTile : dirtTile;
             return null;
         }
 

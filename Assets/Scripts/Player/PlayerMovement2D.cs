@@ -259,9 +259,17 @@ public class PlayerMovement2D : MonoBehaviour
         Vector2 leftLow = center + new Vector2(-wallCheckOffset, wallProbeLowOffsetY);
         Vector2 leftHigh = center + new Vector2(-wallCheckOffset, wallProbeHighOffsetY);
 
-        bool wallRight = Physics2D.OverlapBox(rightLow, wallProbeSize, 0f, groundLayer)
+        bool rightLowHit = Physics2D.OverlapBox(rightLow, wallProbeSize, 0f, groundLayer);
+        bool leftLowHit  = Physics2D.OverlapBox(leftLow,  wallProbeSize, 0f, groundLayer);
+
+        // Tunnel vertical : si la probe BASSE touche DES DEUX CÔTÉS, le joueur est coincé
+        // entre deux parois d'1 bloc d'écart (conduit creusé au drill) — chute libre, pas
+        // de wall-slide, même si les probes hautes valident aussi. Court-circuit explicite.
+        if (rightLowHit && leftLowHit) { lastWallDir = 0; return 0; }
+
+        bool wallRight = rightLowHit
                       && Physics2D.OverlapBox(rightHigh, wallProbeSize, 0f, groundLayer);
-        bool wallLeft = Physics2D.OverlapBox(leftLow, wallProbeSize, 0f, groundLayer)
+        bool wallLeft = leftLowHit
                      && Physics2D.OverlapBox(leftHigh, wallProbeSize, 0f, groundLayer);
 
         // Filtre anti-escalier : exige un "vrai mur" (tile pleine + voisin vertical) côté
