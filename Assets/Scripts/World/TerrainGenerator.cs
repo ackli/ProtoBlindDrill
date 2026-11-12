@@ -19,9 +19,8 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Tile 'bloc de lumière'. DestructibleTile dont MaterialType = LightCrystal. Placée aléatoirement à la place de dirtTile et dropera un LightOrb à destruction.")]
     [SerializeField] private TileBase lightCrystalTile;
 
-    [Range(0f, 1f)]
-    [Tooltip("Probabilité qu'un bloc de terre (dirt) soit remplacé par un bloc de lumière lors de la génération. Recommandé : 0.05 à 0.15.")]
-    [SerializeField] private float crystalSpawnChance = 0.14f;
+    [Tooltip("Probabilité qu'un bloc de dirt soit un LightCrystal, évaluée par profondeur normalisée. X = 0 (surface, y = topRight.y) → X = 1 (fond, y = bottomLeft.y). Y = chance dans [0, 1]. Default = EaseInOut 0.02 → 0.035 : plateau haut sobre (ressource pleine au spawn) puis montée douce dans le dernier tiers (survie en profondeur). Dessine librement dans l'Inspector pour créer plateaux, falaises, doubles paliers…")]
+    [SerializeField] private AnimationCurve crystalChanceByDepth = AnimationCurve.EaseInOut(0f, 0.02f, 1f, 0.035f);
 
     [Tooltip("Seed indépendante du tirage de remplacement par les blocs de lumière, pour une génération reproductible.")]
     [SerializeField] private int crystalSeed = 7777;
@@ -294,9 +293,27 @@ public class TerrainGenerator : MonoBehaviour
 
         int relicCount = 0;
         int crystalCount = 0;
+
+        // Histogramme crystal par bande Y pour debug équilibrage (surface → fond, 5 bandes).
+        const int bandCount = 5;
+        int[] crystalsPerBand = new int[bandCount];
+        int[] cellsPerBand = new int[bandCount];
+        int maxY = topRight.y;
+        int yRange = Mathf.Max(1, topRight.y - bottomLeft.y);
+
         for (int k = 0; k < positions.Length; k++)
         {
             if (tiles[k] == null) continue;
+
+            int bandIdx = Mathf.Clamp(
+                Mathf.FloorToInt((float)(maxY - positions[k].y) / yRange * bandCount),
+                0, bandCount - 1);
+
+            // Exclure du dénominateur les cellules d'arène : les plateformes Tier2/Tier3
+            // renvoient dirt directement sans passer par le tirage crystal (cf. PickTile),
+            // donc elles écrasent artificiellement le % mesuré de la bande.
+            bool inArena = TryGetArenaCell(positions[k].x, positions[k].y, out _, out _);
+            if (!inArena) cellsPerBand[bandIdx]++;
 
             destructible.SpawnBlocker(positions[k]);
 
@@ -308,6 +325,7 @@ public class TerrainGenerator : MonoBehaviour
             {
                 destructible.SpawnCrystalLight(positions[k]);
                 crystalCount++;
+                crystalsPerBand[bandIdx]++;
             }
             else if (dt.material == DestructibleTile.MaterialType.UpgradeRelic)
             {
@@ -316,7 +334,16 @@ public class TerrainGenerator : MonoBehaviour
                 relicCount++;
             }
         }
-        Debug.Log($"[TERRAIN-GEN] Génération terminée : {crystalCount} LightCrystal(s), {relicCount} Relic(s) placées.");
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"[TERRAIN-GEN] Génération terminée : {crystalCount} LightCrystal(s), {relicCount} Relic(s). ");
+        sb.Append("Densité crystal par bande Y (surface→fond) : ");
+        for (int b = 0; b < bandCount; b++)
+        {
+            float pct = cellsPerBand[b] > 0 ? 100f * crystalsPerBand[b] / cellsPerBand[b] : 0f;
+            sb.Append($"B{b}={crystalsPerBand[b]}/{cellsPerBand[b]}({pct:F1}%) ");
+        }
+        Debug.Log(sb.ToString());
     }
 
     /// <summary>
@@ -362,21 +389,25 @@ public class TerrainGenerator : MonoBehaviour
 
         // 6. Dirt par défaut. Deux tirages indépendants s'enchaînent sur les cellules dirt :
         //    6a. Relique camouflée (très rare, prioritaire sur le crystal pour qu'elle survive au tirage suivant).
-        //    6b. LightCrystal (fraction crystalSpawnChance, remplacement 1:1, préserve la densité).
-        // Le tirage relique passe par un hash déterministe (uniforme sur [0,1[), PAS par Perlin :
-        // Perlin est centré autour de 0.5 et sa queue > 0.9 est extrêmement fine, donc un seuil
-        // (1 - 0.05) réalisait en pratique bien moins que 5 % de densité réelle.
+        //    6b. LightCrystal — taux évalué par la courbe crystalChanceByDepth (X = profondeur
+        //        normalisée 0→1 de la surface au fond, Y = chance [0,1]). Tunable en Inspector.
+        // Les deux tirages passent par Hash01 (uniforme sur [0,1[), PAS par Perlin : Perlin est
+        // centré autour de 0.5 et sa queue > 0.9 est extrêmement fine, donc un seuil (1 - p)
+        // réalise en pratique bien moins que p — et crée des bandes entières sans crystal (bug
+        // "profondeur sombre" des playtests).
         if (relicTile != null && relicSpawnChance > 0f)
         {
             float rr = Hash01(x, y, relicSeed);
             if (rr < relicSpawnChance) return relicTile;
         }
-        if (lightCrystalTile != null && crystalSpawnChance > 0f)
+        if (lightCrystalTile != null)
         {
-            // Hash déterministe par cellule via Perlin pour que la répartition ne bouge pas entre runs
-            // (même seed = mêmes crystals). Évite aussi les grappes trop fortes sur un simple Random.value.
-            float r = Mathf.PerlinNoise((x + crystalSeed) * 0.9f, (y + crystalSeed) * 0.9f);
-            if (r > 1f - crystalSpawnChance) return lightCrystalTile;
+            // depthT = 0 à la surface (y = topRight.y) → 1 au fond (y = bottomLeft.y).
+            // crystalChanceByDepth.Evaluate(depthT) donne la densité ciblée à cette profondeur.
+            float depthT = Mathf.InverseLerp(topRight.y, bottomLeft.y, y);
+            float effectiveChance = crystalChanceByDepth.Evaluate(depthT);
+            if (effectiveChance > 0f && Hash01(x, y, crystalSeed) < effectiveChance)
+                return lightCrystalTile;
         }
         return dirtTile;
     }
