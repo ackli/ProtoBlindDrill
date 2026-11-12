@@ -18,8 +18,17 @@ public abstract class MobBase : MonoBehaviour
     [Header("Stats")]
     [SerializeField] protected int maxHP = 3;
     [SerializeField] protected int damageToPlayer = 1;
-    [Tooltip("Rayon de détection du joueur (unités monde, mesuré en projection 2D).")]
+    [Tooltip("Rayon de détection du joueur (unités monde, mesuré en projection 2D). Seuil d'ENTRÉE en aggro.")]
     [SerializeField] protected float detectionRadius = 8f;
+
+    [Tooltip("Rayon au-delà duquel un mob déjà aggroé perd l'aggro. Hystérésis : doit être > detectionRadius pour éviter le tremblement à la frontière.")]
+    [SerializeField] protected float aggroLostRadius = 12f;
+
+    [Tooltip("Layers considérés comme obstacles bloquant la ligne de vue (Physics2D.Linecast). Un mob n'aggrote pas à travers un mur. Si laissé à 0, Awake tente d'y mettre le layer 'Ground'.")]
+    [SerializeField] protected LayerMask losMask;
+
+    [Tooltip("Durée (s) d'aggro forcé après que le mob a reçu des dégâts, même sans LOS. Rétorsion : un mob tapé à travers un mur va contourner pour venir au contact.")]
+    [SerializeField] protected float retaliationDuration = 4f;
 
     [Header("Patrol")]
     [SerializeField] protected float patrolRadius = 5f;
@@ -29,6 +38,9 @@ public abstract class MobBase : MonoBehaviour
     [Header("Pathfinding")]
     [Tooltip("Rayon de SamplePosition pour projeter une cible sur le NavMesh.")]
     [SerializeField] protected float sampleRadius = 2f;
+
+    [Tooltip("Distance d'arrêt du NavMeshAgent. Mêlée ~0.5 pour coller au joueur. Ranged peut mettre plus haut si besoin — le Spitter gère son propre isStopped indépendamment.")]
+    [SerializeField] protected float stoppingDistance = 0.5f;
 
     [Header("Player")]
     [Tooltip("Si vide, résolu au Awake via FindObjectOfType<PlayerStats>().")]
@@ -43,8 +55,12 @@ public abstract class MobBase : MonoBehaviour
     protected int currentHP;
     protected float waitTimer;
 
-    // --- Télémétrie ---
-    private bool isAggroed;
+    // --- Aggro state ---
+    /// <summary>État "mob engagé" exposé aux dérivés. Remplace le test direct DistanceToPlayer2D() <= detectionRadius
+    /// dans les TickBehavior. Mis à jour par UpdateAggroState avec hystérésis + LOS + rétorsion.</summary>
+    protected bool isPlayerAggroed;
+    private bool previousAggroState;
+    private float retaliationUntil = -1f;
     private float spawnTime;
 
     protected virtual void Awake()
@@ -71,6 +87,10 @@ public abstract class MobBase : MonoBehaviour
             var sr = GetComponentInChildren<SpriteRenderer>();
             if (sr != null) visuals = sr.transform;
         }
+
+        // Fallback losMask si non assigné sur le prefab : tente le layer "Ground". Si absent,
+        // reste à 0 → linecast retourne toujours null → aggro sans LOS (ancien comportement).
+        if (losMask.value == 0) losMask = LayerMask.GetMask("Ground");
     }
 
     protected virtual void Start()
@@ -118,6 +138,10 @@ public abstract class MobBase : MonoBehaviour
         // Config post-enable : certaines props veulent un agent actif pour être propagées.
         agent.updateRotation = false;
         agent.autoBraking = true;
+        agent.stoppingDistance = stoppingDistance;
+        agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+        // Priorité aléatoire : évite les deadlocks quand deux mobs ont la même priorité.
+        agent.avoidancePriority = Random.Range(30, 70);
 
         // 5. Laisse Unity lier l'agent au NavMesh.
         yield return null;
@@ -135,23 +159,63 @@ public abstract class MobBase : MonoBehaviour
     protected virtual void Update()
     {
         if (!agent.isOnNavMesh) return;
-        TickBehavior();
+        // UpdateAggroState avant TickBehavior : les dérivés lisent isPlayerAggroed dans leur tick.
         UpdateAggroState();
+        TickBehavior();
         SyncVisuals();
     }
 
-    /// <summary>Évalue "mob engagé" = player présent ET dans detectionRadius. Loggue uniquement les transitions.</summary>
+    /// <summary>
+    /// Évalue isPlayerAggroed avec trois mécaniques :
+    /// 1. Hystérésis : seuil d'entrée detectionRadius, seuil de sortie aggroLostRadius (> detectionRadius).
+    /// 2. Ligne de vue : exigée pour PASSER aggroé (Physics2D.Linecast via losMask). Une fois aggroé,
+    ///    on garde l'aggro même sans LOS tant que le joueur est dans aggroLostRadius (stalagmite ≠ perte).
+    /// 3. Rétorsion : si le mob a été touché il y a &lt; retaliationDuration, aggro forcé indépendamment
+    ///    de la distance et du LOS — permet le "revenge push" à travers les murs.
+    /// </summary>
     private void UpdateAggroState()
     {
-        bool nowAggroed = playerTarget != null && DistanceToPlayer2D() <= detectionRadius;
-        if (nowAggroed == isAggroed) return;
-
-        isAggroed = nowAggroed;
-        float dist = DistanceToPlayer2D();
-        if (nowAggroed)
-            CombatTelemetry.AggroGained(GetType().Name, GetInstanceID(), dist);
+        bool forcedByRetaliation = Time.time < retaliationUntil;
+        bool now;
+        if (playerTarget == null)
+        {
+            now = false;
+        }
+        else if (forcedByRetaliation)
+        {
+            now = true;
+        }
         else
-            CombatTelemetry.AggroLost(GetType().Name, GetInstanceID(), dist, "hors de portée");
+        {
+            float d = DistanceToPlayer2D();
+            if (!isPlayerAggroed)
+                now = d <= detectionRadius && HasLineOfSight();
+            else
+                now = d <= aggroLostRadius;
+        }
+
+        isPlayerAggroed = now;
+
+        if (now != previousAggroState)
+        {
+            previousAggroState = now;
+            float dist = DistanceToPlayer2D();
+            if (now)
+                CombatTelemetry.AggroGained(GetType().Name, GetInstanceID(), dist);
+            else
+                CombatTelemetry.AggroLost(GetType().Name, GetInstanceID(), dist,
+                    forcedByRetaliation ? "retaliation expired" : "hors de portée / LOS");
+        }
+    }
+
+    /// <summary>Linecast 2D du mob vers le joueur. Convention Dual-Plane : le mob est en (x, z) sur
+    /// le plan NavMesh, le joueur en (x, y). Retourne true si aucun collider du losMask ne bloque.</summary>
+    protected bool HasLineOfSight()
+    {
+        if (playerTarget == null) return false;
+        Vector2 from = new Vector2(transform.position.x, transform.position.z);
+        Vector2 to = new Vector2(playerTarget.position.x, playerTarget.position.y);
+        return Physics2D.Linecast(from, to, losMask).collider == null;
     }
 
     /// <summary>Boucle comportementale propre à chaque mob (chase, attaque, patrouille...).</summary>
@@ -244,6 +308,10 @@ public abstract class MobBase : MonoBehaviour
         if (currentHP <= 0 || amount <= 0) return;
         currentHP = Mathf.Max(0, currentHP - amount);
         CombatTelemetry.MobHit(GetType().Name, GetInstanceID(), amount, source, currentHP, maxHP);
+
+        // Rétorsion : aggro forcé pendant retaliationDuration pour permettre à un mob frappé
+        // à travers un mur / hors LOS de contourner et venir au contact.
+        retaliationUntil = Time.time + retaliationDuration;
 
         if (currentHP <= 0)
         {

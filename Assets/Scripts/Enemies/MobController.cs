@@ -19,9 +19,8 @@ public class MobController : MobBase
 
     protected override void TickBehavior()
     {
-        if (playerTarget != null
-            && DistanceToPlayer2D() <= detectionRadius
-            && TryPathTo(PlayerOnNav(), out var hit))
+        // isPlayerAggroed intègre déjà hystérésis + LOS + rétorsion (MobBase.UpdateAggroState).
+        if (isPlayerAggroed && TryPathTo(PlayerOnNav(), out var hit))
         {
             if (state != State.Chase)
             {
