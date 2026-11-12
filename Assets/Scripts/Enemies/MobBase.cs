@@ -21,11 +21,14 @@ public abstract class MobBase : MonoBehaviour
     [Tooltip("Rayon de détection du joueur (unités monde, mesuré en projection 2D). Seuil d'ENTRÉE en aggro.")]
     [SerializeField] protected float detectionRadius = 8f;
 
-    [Tooltip("Rayon au-delà duquel un mob déjà aggroé perd l'aggro. Hystérésis : doit être > detectionRadius pour éviter le tremblement à la frontière.")]
-    [SerializeField] protected float aggroLostRadius = 12f;
+    [Tooltip("Leash : distance au-delà de laquelle un mob déjà aggroé lâche IMMÉDIATEMENT, peu importe mémoire ou rétorsion. Doit être > detectionRadius (hystérésis) et assez grand pour que le mob reste engagé pendant un chase long.")]
+    [SerializeField] protected float aggroLostRadius = 20f;
 
     [Tooltip("Layers considérés comme obstacles bloquant la ligne de vue (Physics2D.Linecast). Un mob n'aggrote pas à travers un mur. Si laissé à 0, Awake tente d'y mettre le layer 'Ground'.")]
     [SerializeField] protected LayerMask losMask;
+
+    [Tooltip("Mémoire (s) : temps de maintien de l'aggro après perte du LOS. Pendant cette fenêtre le mob continue à pathfinder vers la dernière position connue du joueur — c'est ce qui lui fait contourner le petit bloc derrière lequel le joueur s'est caché.")]
+    [SerializeField] protected float aggroMemoryDuration = 3f;
 
     [Tooltip("Durée (s) d'aggro forcé après que le mob a reçu des dégâts, même sans LOS. Rétorsion : un mob tapé à travers un mur va contourner pour venir au contact.")]
     [SerializeField] protected float retaliationDuration = 4f;
@@ -61,6 +64,10 @@ public abstract class MobBase : MonoBehaviour
     protected bool isPlayerAggroed;
     private bool previousAggroState;
     private float retaliationUntil = -1f;
+    /// <summary>Deadline de la mémoire d'aggro : tant que Time.time &lt; aggroMemoryUntil, le mob
+    /// reste aggroé même sans LOS/hors detectionRadius. Rafraîchi à chaque rafraîchissement
+    /// (LOS+portée OU rétorsion). Le leash (aggroLostRadius) reste prioritaire sur la mémoire.</summary>
+    private float aggroMemoryUntil = -1f;
     private float spawnTime;
 
     protected virtual void Awake()
@@ -166,32 +173,62 @@ public abstract class MobBase : MonoBehaviour
     }
 
     /// <summary>
-    /// Évalue isPlayerAggroed avec trois mécaniques :
-    /// 1. Hystérésis : seuil d'entrée detectionRadius, seuil de sortie aggroLostRadius (> detectionRadius).
-    /// 2. Ligne de vue : exigée pour PASSER aggroé (Physics2D.Linecast via losMask). Une fois aggroé,
-    ///    on garde l'aggro même sans LOS tant que le joueur est dans aggroLostRadius (stalagmite ≠ perte).
-    /// 3. Rétorsion : si le mob a été touché il y a &lt; retaliationDuration, aggro forcé indépendamment
-    ///    de la distance et du LOS — permet le "revenge push" à travers les murs.
+    /// Évalue isPlayerAggroed avec quatre mécaniques imbriquées, évaluées dans cet ordre :
+    /// 1. Leash (priorité absolue) : si distance &gt; aggroLostRadius → perte immédiate, même si
+    ///    mémoire/rétorsion actives. Évite que le joueur emmène le mob à l'autre bout du niveau.
+    /// 2. Rétorsion : mob touché il y a &lt; retaliationDuration → aggro forcé + rafraîchit la mémoire.
+    ///    Permet le revenge push à travers les murs.
+    /// 3. Rafraîchissement : LOS libre ET distance &lt;= detectionRadius → aggro + rafraîchit la mémoire.
+    ///    Seul chemin d'entrée en aggro depuis l'état "patrouille".
+    /// 4. Maintien par mémoire : déjà aggroé et Time.time &lt; aggroMemoryUntil → on reste aggroé,
+    ///    même sans LOS et même hors detectionRadius (mais toujours à ≤ aggroLostRadius, cf. 1).
+    ///    C'est cette fenêtre qui force le mob à continuer de pathfinder vers le joueur et à
+    ///    contourner un petit bloc derrière lequel le joueur vient de se cacher.
     /// </summary>
     private void UpdateAggroState()
     {
         bool forcedByRetaliation = Time.time < retaliationUntil;
         bool now;
+        string lostReason = null;
+
         if (playerTarget == null)
         {
             now = false;
-        }
-        else if (forcedByRetaliation)
-        {
-            now = true;
+            lostReason = "player null";
         }
         else
         {
             float d = DistanceToPlayer2D();
-            if (!isPlayerAggroed)
-                now = d <= detectionRadius && HasLineOfSight();
+
+            if (d > aggroLostRadius)
+            {
+                // 1. Leash : coupe tout, y compris rétorsion/mémoire.
+                now = false;
+                lostReason = "leash (hors de portée)";
+            }
+            else if (forcedByRetaliation)
+            {
+                // 2. Rétorsion : aggro forcé + on prolonge la mémoire pour que la perte de la
+                // fenêtre de rétorsion ne retombe pas en patrol direct s'il n'y a pas de LOS.
+                now = true;
+                aggroMemoryUntil = Time.time + aggroMemoryDuration;
+            }
+            else if (d <= detectionRadius && HasLineOfSight())
+            {
+                // 3. Rafraîchissement standard : LOS + portée.
+                now = true;
+                aggroMemoryUntil = Time.time + aggroMemoryDuration;
+            }
+            else if (isPlayerAggroed && Time.time < aggroMemoryUntil)
+            {
+                // 4. Maintien par mémoire : on garde l'aggro le temps de contourner.
+                now = true;
+            }
             else
-                now = d <= aggroLostRadius;
+            {
+                now = false;
+                if (isPlayerAggroed) lostReason = "mémoire expirée";
+            }
         }
 
         isPlayerAggroed = now;
@@ -203,8 +240,7 @@ public abstract class MobBase : MonoBehaviour
             if (now)
                 CombatTelemetry.AggroGained(GetType().Name, GetInstanceID(), dist);
             else
-                CombatTelemetry.AggroLost(GetType().Name, GetInstanceID(), dist,
-                    forcedByRetaliation ? "retaliation expired" : "hors de portée / LOS");
+                CombatTelemetry.AggroLost(GetType().Name, GetInstanceID(), dist, lostReason ?? "inconnu");
         }
     }
 
