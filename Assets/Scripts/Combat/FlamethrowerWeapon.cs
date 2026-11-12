@@ -14,8 +14,9 @@ public class FlamethrowerWeapon : MonoBehaviour, IWeapon
     [SerializeField] private DebrisProjectile projectilePrefab;
     [SerializeField] private float projectileSpeed = 14f;
     [SerializeField] private float muzzleOffset = 0.5f;
-    [Tooltip("Durée de vie d'une flammèche avant Destroy. Multiplié par speed = portée effective. 0.25s × 14 u/s ≈ 3.5 u de portée.")]
-    [SerializeField] private float particleLifetime = 0.25f;
+    [Tooltip("Portée effective de la flamme (unités monde). particleLifetime est dérivé en Awake par la formule : lifetime = effectiveRange / projectileSpeed. Tune ici en u pour avoir une lecture directe de la portée, pas en secondes.")]
+    [SerializeField] private float effectiveRange = 6f;
+    private float particleLifetime;
 
     [Header("Flux")]
     [Tooltip("Intervalle (s) entre deux particules spawnées tant que la touche est maintenue.")]
@@ -44,6 +45,10 @@ public class FlamethrowerWeapon : MonoBehaviour, IWeapon
     {
         stats = GetComponent<PlayerStats>();
         if (targetCamera == null) targetCamera = Camera.main;
+
+        // Portée = vitesse × durée de vie. On dérive la durée depuis effectiveRange pour que
+        // le champ Inspector reste lisible (en u, pas en s). Fallback 0.25s si speed = 0.
+        particleLifetime = projectileSpeed > 0.01f ? effectiveRange / projectileSpeed : 0.25f;
 
         if (projectilePrefab == null) projectilePrefab = DebrisProjectile.DefaultPrefab;
         if (inputActions == null)

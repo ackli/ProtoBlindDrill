@@ -33,7 +33,8 @@ public class TrapperController : MobBase
     {
         dropTimer -= Time.deltaTime;
 
-        if (playerTarget != null && DistanceToPlayer2D() <= detectionRadius)
+        // isPlayerAggroed intègre hystérésis + LOS + rétorsion (défini dans MobBase).
+        if (isPlayerAggroed)
         {
             if (state != State.Avoid)
             {

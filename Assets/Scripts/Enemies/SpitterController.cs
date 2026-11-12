@@ -58,7 +58,8 @@ public class SpitterController : MobBase
 
         float dist = DistanceToPlayer2D();
 
-        if (dist > detectionRadius)
+        // isPlayerAggroed intègre hystérésis + LOS + rétorsion (défini dans MobBase).
+        if (!isPlayerAggroed)
         {
             if (state != State.Patrol) EnterPatrol();
             TickPatrol();
