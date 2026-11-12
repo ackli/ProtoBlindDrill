@@ -113,6 +113,16 @@ public class TerrainGenerator : MonoBehaviour
     [Tooltip("Seed indépendante du bruit des plateformes.")]
     [SerializeField] private int platformSeed = 42;
 
+    [Header("Arena Camera Zoom")]
+    [Tooltip("Orthographic size cible de la caméra quand le joueur entre dans une salle Tier 1 (8×8). Baseline hors arène = 7.5 (défini sur CameraFollow2D). Même valeur = pas de dézoom.")]
+    [SerializeField] private float tier1CameraZoom = 7.5f;
+
+    [Tooltip("Orthographic size cible pour une salle Tier 2 (14×14). Recommandé ~9 pour voir toute la salle + marge.")]
+    [SerializeField] private float tier2CameraZoom = 9f;
+
+    [Tooltip("Orthographic size cible pour une salle Tier 3 (20×20). Recommandé ~11-12 pour voir l'arène complète.")]
+    [SerializeField] private float tier3CameraZoom = 11f;
+
     [Header("Arena Mob Prefabs")]
     [SerializeField] private MobBase crawlerPrefab;
     [SerializeField] private SpitterController spitterPrefab;
@@ -659,8 +669,16 @@ public class TerrainGenerator : MonoBehaviour
             go.transform.SetParent(arenasParent, worldPositionStays: false);
             go.transform.position = center;
 
+            float cameraZoom = entry.tier switch
+            {
+                ArenaRoom.RoomTier.Tier1 => tier1CameraZoom,
+                ArenaRoom.RoomTier.Tier2 => tier2CameraZoom,
+                ArenaRoom.RoomTier.Tier3 => tier3CameraZoom,
+                _ => tier1CameraZoom
+            };
+
             var arena = go.AddComponent<ArenaRoom>();
-            arena.Configure(entry.tier, crawlerPrefab, spitterPrefab, trapperPrefab, worldSize, navMeshY);
+            arena.Configure(entry.tier, crawlerPrefab, spitterPrefab, trapperPrefab, worldSize, navMeshY, cameraZoom);
         }
     }
 }

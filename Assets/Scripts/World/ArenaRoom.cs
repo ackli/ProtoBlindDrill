@@ -33,6 +33,10 @@ public class ArenaRoom : MonoBehaviour
     [Tooltip("Décalage vertical (unités) au-dessus du sol de la salle pour poser la récompense (évite de clipper dans le sol).")]
     [SerializeField] private float rewardBottomOffset = 1.0f;
 
+    [Header("Camera")]
+    [Tooltip("Orthographic size cible quand le joueur entre dans la salle. Dézoom = valeur plus grande que la baseline (7.5). Overridé par TerrainGenerator.Configure selon le tier.")]
+    [SerializeField] private float arenaCameraZoom = 9f;
+
     private bool hasTriggered;
     private bool rewardDropped;
     private readonly List<MobBase> spawnedMobs = new List<MobBase>();
@@ -45,13 +49,14 @@ public class ArenaRoom : MonoBehaviour
 
     /// <summary>Configuration dynamique appelée par TerrainGenerator après Instantiate/AddComponent.</summary>
     public void Configure(RoomTier t, MobBase crawler, SpitterController spitter, TrapperController trapper,
-                          Vector2 size, float ny)
+                          Vector2 size, float ny, float cameraZoom)
     {
         tier = t;
         crawlerPrefab = crawler;
         spitterPrefab = spitter;
         trapperPrefab = trapper;
         navMeshY = ny;
+        arenaCameraZoom = cameraZoom;
 
         var box = GetComponent<BoxCollider2D>();
         box.size = size;
@@ -67,14 +72,28 @@ public class ArenaRoom : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (hasTriggered) return;
         if (other.GetComponentInParent<PlayerStats>() == null) return;
 
+        // Zoom caméra à chaque entrée (même si l'arène a déjà été déclenchée) pour que la
+        // re-visite d'une salle vidée dézoome aussi — cohérence visuelle.
+        if (CameraFollow2D.Instance != null)
+            CameraFollow2D.Instance.SetZoom(arenaCameraZoom);
+
+        if (hasTriggered) return;
         hasTriggered = true;
         Spawn();
 
         if (LevelObjectiveManager.Instance != null)
             LevelObjectiveManager.Instance.MarkArenaTriggered(this);
+    }
+
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        if (other.GetComponentInParent<PlayerStats>() == null) return;
+
+        // Retour au zoom de parcours dès que le joueur sort de la salle.
+        if (CameraFollow2D.Instance != null)
+            CameraFollow2D.Instance.ResetZoom();
     }
 
     private void Spawn()
