@@ -10,7 +10,6 @@ Ce README explique comment récupérer le projet et lancer le jeu depuis les fic
 |---|---|
 | Unity Editor | **6000.3.27f2** (Unity 6.3) |
 | Unity Hub | récente |
-| Git | requis, y compris par Unity (un package est récupéré via une URL git) |
 
 Aucun module de plateforme particulier n'est nécessaire pour jouer dans l'éditeur. Pour faire un build Windows, installer le module *Windows Build Support*.
 
