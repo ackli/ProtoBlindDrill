@@ -49,7 +49,7 @@ Pour tester le gameplay sans passer par le menu, ouvrir directement `SampleScene
 
 | Action | Clavier / souris | Manette |
 |---|---|---|
-| Se déplacer | `W` `A` `S` `D` | Stick gauche |
+| Se déplacer | `Z` `Q` `S` `D` | Stick gauche |
 | Sauter | `Espace` | Bouton Sud (A / ✕) |
 | Viser | Souris | Stick droit |
 | Forer | Clic gauche | Gâchette droite / RB |
@@ -95,7 +95,6 @@ ProjectSettings/ Réglages Unity, dont la version de l'éditeur
 ## Problèmes fréquents
 
 - **Écran vide ou gris au Play** : aucune scène n'est chargée. Ouvrir `Assets/Scenes/MainMenu.unity`.
-- **Erreur de résolution de packages à l'ouverture** : Git n'est pas installé ou pas dans le `PATH`. Le package `com.coplaydev.unity-mcp` est récupéré depuis GitHub. C'est un outil d'éditeur, pas une dépendance du jeu : on peut aussi retirer sa ligne de `Packages/manifest.json`.
 - **Matériaux roses** : le projet a été ouvert avec une mauvaise version d'Unity ou l'import URP a échoué. Rouvrir avec la 6000.3.27f2, ou supprimer `Library/` et relancer.
 - **Erreurs de compilation persistantes après un pull** : fermer Unity, supprimer `Library/`, rouvrir le projet.
 
