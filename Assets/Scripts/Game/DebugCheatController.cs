@@ -23,7 +23,7 @@ public class DebugCheatController : MonoBehaviour
     [SerializeField] private PlayerStats playerStats;
     [Tooltip("Light2D en mode Global à forcer à pleine luminosité pour la Vision Totale.")]
     [SerializeField] private Light2D[] globalLights;
-    [Tooltip("Indicateur UI d'arènes non déclenchées (resté caché tant que ce cheat n'est pas activé).")]
+    [Tooltip("Boussole anti-frustration. Ce cheat la force à l'écran sans attendre le délai d'inactivité.")]
     [SerializeField] private ArenaIndicatorUI arenaIndicator;
 
     // Flag statique lu par MobBase.OnChildTriggerEnter pour appliquer les dégâts one-shot.
@@ -129,7 +129,9 @@ public class DebugCheatController : MonoBehaviour
         if (arenaIndicator == null) arenaIndicator = FindFirstObjectByType<ArenaIndicatorUI>(FindObjectsInactive.Include);
         if (arenaIndicator != null) arenaIndicator.isRadarEnabled = on;
 
-        Debug.Log($"Cheat: Radar d'arènes {(on ? "ACTIVÉ" : "DÉSACTIVÉ")}");
+        // La boussole est désormais une mécanique officielle (auto après inactivité, cf.
+        // LevelObjectiveManager.IsCompassActive). F5 ne fait plus que la forcer pour les tests.
+        Debug.Log($"Cheat: Boussole forcée {(on ? "ACTIVÉE" : "DÉSACTIVÉE")}");
     }
 
     private void ApplyFullVision(bool on)

@@ -2,9 +2,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Boussole / radar d'arènes non déclenchées. S'attache à un GameObject enfant d'un
-/// Canvas en Screen Space - Overlay. Chaque frame :
-///   1. récupère l'arène non déclenchée la plus proche du joueur via <see cref="LevelObjectiveManager"/>,
+/// Boussole anti-frustration. S'attache à un GameObject enfant d'un Canvas en Screen Space - Overlay.
+/// Visible uniquement quand <see cref="LevelObjectiveManager.IsCompassActive"/> est vrai (joueur
+/// resté trop longtemps sans découvrir de salle ni combattre) ou quand le forçage debug est actif.
+/// Chaque frame où elle est visible :
+///   1. récupère la cible la plus proche du joueur (arène non déclenchée OU mob vivant),
 ///   2. convertit sa position monde en coordonnées écran,
 ///   3. clampe l'icône sur le bord de l'écran (avec padding) si l'arène est hors champ,
 ///      et oriente l'icône vers l'extérieur,
@@ -13,7 +15,7 @@ using UnityEngine.UI;
 public class ArenaIndicatorUI : MonoBehaviour
 {
     [Header("Enable")]
-    [Tooltip("Désactivé par défaut. Bascule via DebugCheatController (F5) ou depuis l'Inspector.")]
+    [Tooltip("Forçage debug : affiche la boussole sans attendre le délai d'inactivité. Bascule via DebugCheatController (F5) ou depuis l'Inspector.")]
     public bool isRadarEnabled = false;
 
     [Header("Target")]
@@ -69,15 +71,16 @@ public class ArenaIndicatorUI : MonoBehaviour
     {
         if (indicatorRect == null) return;
 
-        // Court-circuit : si le radar est désactivé (cas par défaut), on ne fait AUCUN calcul
-        // (pas de WorldToScreenPoint, pas de GetNearest...) et on force l'invisibilité.
-        if (!isRadarEnabled)
+        var objectives = LevelObjectiveManager.Instance;
+        if (objectives == null) { SetVisible(false); return; }
+
+        // Court-circuit : tant que le joueur n'est pas resté inactif assez longtemps (et que le
+        // forçage debug est éteint), on ne fait AUCUN calcul et on force l'invisibilité.
+        if (!isRadarEnabled && !objectives.IsCompassActive)
         {
-            if (indicatorGraphic != null) indicatorGraphic.enabled = false;
+            SetVisible(false);
             return;
         }
-
-        if (LevelObjectiveManager.Instance == null) { SetVisible(false); return; }
 
         if (player == null)
         {
@@ -89,13 +92,16 @@ public class ArenaIndicatorUI : MonoBehaviour
         if (targetCamera == null) targetCamera = Camera.main;
         if (targetCamera == null) { SetVisible(false); return; }
 
-        var target = LevelObjectiveManager.Instance.GetNearestUntriggeredArena(player.position);
-        if (target == null) { SetVisible(false); return; }
+        if (!objectives.TryGetNearestCompassTarget(player.position, out Vector3 targetPos))
+        {
+            SetVisible(false);
+            return;
+        }
 
         SetVisible(true);
 
-        UpdatePosition(target.transform.position);
-        UpdatePulse(target.transform.position);
+        UpdatePosition(targetPos);
+        UpdatePulse(targetPos);
     }
 
     private void SetVisible(bool visible)

@@ -23,6 +23,15 @@ public class LevelObjectiveManager : MonoBehaviour
     [Tooltip("Pool de récompenses (prefabs de PickupItem) tirée au hasard par ArenaRoom au clear.")]
     [SerializeField] private PickupItem[] rewardPrefabs;
 
+    [Header("Boussole anti-frustration")]
+    [Tooltip("Secondes sans découverte de salle ni combat avant que la boussole n'apparaisse.")]
+    [SerializeField] private float compassInactivityDelay = 120f;
+
+    // Chrono d'inactivité : remis à 0 par NotifyPlayerAction (nouvelle arène, dégâts infligés, aggro).
+    private float timeSinceLastAction;
+    // Mobs vivants enregistrés (MobBase.Start → OnDestroy), cibles potentielles de la boussole.
+    private readonly List<MobBase> aliveMobs = new List<MobBase>();
+
     private int totalEnemiesRemaining;
     private readonly List<ArenaRoom> untriggeredRooms = new List<ArenaRoom>();
     private bool hasEverRegistered;
@@ -114,6 +123,24 @@ public class LevelObjectiveManager : MonoBehaviour
     public IReadOnlyList<ArenaRoom> UntriggeredRooms => untriggeredRooms;
     public bool InitialGenerationComplete => initialGenerationComplete;
 
+    /// <summary>Secondes écoulées depuis la dernière découverte de salle / action de combat.</summary>
+    public float TimeSinceLastAction => timeSinceLastAction;
+    /// <summary>Vrai quand le joueur est resté inactif assez longtemps pour mériter la boussole.</summary>
+    public bool IsCompassActive => timeSinceLastAction >= compassInactivityDelay;
+
+    private void Update()
+    {
+        // Le chrono ne tourne que pendant la partie : pas avant la fin de génération, pas après la victoire.
+        if (!initialGenerationComplete || victoryFired) return;
+        timeSinceLastAction += Time.deltaTime;
+    }
+
+    /// <summary>
+    /// Remet le chrono d'inactivité à 0 (et masque donc la boussole). Appelé quand une arène
+    /// est déclenchée, quand un mob encaisse des dégâts, ou tant qu'un mob est aggro sur le joueur.
+    /// </summary>
+    public void NotifyPlayerAction() => timeSinceLastAction = 0f;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -134,11 +161,13 @@ public class LevelObjectiveManager : MonoBehaviour
         if (mob == null) return;
         totalEnemiesRemaining++;
         hasEverRegistered = true;
+        aliveMobs.Add(mob);
     }
 
     public void UnregisterEnemy(MobBase mob)
     {
         if (mob == null) return;
+        aliveMobs.Remove(mob);
         totalEnemiesRemaining = Mathf.Max(0, totalEnemiesRemaining - 1);
         TryTriggerVictory();
     }
@@ -161,6 +190,7 @@ public class LevelObjectiveManager : MonoBehaviour
     public void MarkArenaTriggered(ArenaRoom room)
     {
         if (room != null) untriggeredRooms.Remove(room);
+        NotifyPlayerAction(); // nouvelle salle découverte → reset de la boussole
         // Les mobs tout juste instanciés s'enregistrent via MobBase.Start — donc à la frame
         // suivante. Évaluer la victoire tout de suite ouvrirait une race condition : le
         // compteur d'ennemis vaut encore 0 alors que des mobs vont s'ajouter. On diffère.
@@ -192,6 +222,44 @@ public class LevelObjectiveManager : MonoBehaviour
         return nearest;
     }
 
+    /// <summary>
+    /// Cible de la boussole : l'élément le plus proche du joueur parmi les arènes non déclenchées
+    /// ET les mobs vivants (un mob oublié dans un couloir compte autant qu'une arène).
+    /// Distances mesurées dans le plan 2D du joueur — les mobs y sont projetés via
+    /// <see cref="MobBase.Position2D"/> (leur racine vit sur le plan NavMesh).
+    /// Retourne false s'il n'existe plus aucune cible.
+    /// </summary>
+    public bool TryGetNearestCompassTarget(Vector3 playerPosition, out Vector3 targetPosition)
+    {
+        targetPosition = default;
+        float bestSq = float.PositiveInfinity;
+        Vector2 player2D = playerPosition;
+
+        var arena = GetNearestUntriggeredArena(playerPosition);
+        if (arena != null)
+        {
+            targetPosition = arena.transform.position;
+            bestSq = ((Vector2)arena.transform.position - player2D).sqrMagnitude;
+        }
+
+        for (int i = aliveMobs.Count - 1; i >= 0; i--)
+        {
+            var mob = aliveMobs[i];
+            if (mob == null) { aliveMobs.RemoveAt(i); continue; }
+            if (!mob.isActiveAndEnabled) continue;
+
+            Vector3 pos = mob.Position2D;
+            float dSq = ((Vector2)pos - player2D).sqrMagnitude;
+            if (dSq < bestSq)
+            {
+                bestSq = dSq;
+                targetPosition = pos;
+            }
+        }
+
+        return bestSq < float.PositiveInfinity;
+    }
+
     private IEnumerator DeferredVictoryCheck()
     {
         // Attendre la fin de frame laisse tourner les Start() des mobs fraîchement instanciés,
@@ -216,4 +284,5 @@ public class LevelObjectiveManager : MonoBehaviour
     // ---- Accesseurs statiques safe (no-op si pas d'Instance) ----
     public static void SafeRegister(MobBase mob) { if (Instance != null) Instance.RegisterEnemy(mob); }
     public static void SafeUnregister(MobBase mob) { if (Instance != null) Instance.UnregisterEnemy(mob); }
+    public static void SafeNotifyPlayerAction() { if (Instance != null) Instance.NotifyPlayerAction(); }
 }

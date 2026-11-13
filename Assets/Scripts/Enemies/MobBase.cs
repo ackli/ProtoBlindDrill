@@ -232,6 +232,8 @@ public abstract class MobBase : MonoBehaviour
         }
 
         isPlayerAggroed = now;
+        // Boussole anti-frustration : tant qu'un mob est aggro, le joueur est "en combat".
+        if (now) LevelObjectiveManager.SafeNotifyPlayerAction();
 
         if (now != previousAggroState)
         {
@@ -263,6 +265,9 @@ public abstract class MobBase : MonoBehaviour
         Vector3 ap = transform.position;
         visuals.position = new Vector3(ap.x, ap.z, 0f);
     }
+
+    /// <summary>Position du mob dans le plan 2D du joueur (projection XZ → XY, comme le visuel).</summary>
+    public Vector3 Position2D => new Vector3(transform.position.x, transform.position.z, 0f);
 
     protected float DistanceToPlayer2D()
     {
@@ -344,6 +349,8 @@ public abstract class MobBase : MonoBehaviour
         if (currentHP <= 0 || amount <= 0) return;
         currentHP = Mathf.Max(0, currentHP - amount);
         CombatTelemetry.MobHit(GetType().Name, GetInstanceID(), amount, source, currentHP, maxHP);
+        // Boussole anti-frustration : infliger des dégâts à un mob compte comme un combat.
+        LevelObjectiveManager.SafeNotifyPlayerAction();
 
         // Rétorsion : aggro forcé pendant retaliationDuration pour permettre à un mob frappé
         // à travers un mur / hors LOS de contourner et venir au contact.
